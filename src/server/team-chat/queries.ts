@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { ApiError, isUuid } from "@/server/api/errors";
 import { db } from "@/server/db";
 import { channelMembers, channels, teamMessages, users } from "@/server/db/schema";
@@ -129,6 +129,51 @@ function escapeLike(q: string): string {
   return q.replace(/[%_\\]/g, (c) => `\\${c}`);
 }
 
+/** Điều kiện khớp tin nhắn còn hiển thị: full-text (`tsv`) hoặc ILIKE dự phòng. Dùng chung cho tìm trong sổ tay và tìm toàn cục. */
+export function messageMatches(q: string) {
+  const like = `%${escapeLike(q)}%`;
+  return and(
+    isNull(teamMessages.deletedAt),
+    isNull(teamMessages.recalledAt),
+    sql`(${teamMessages.tsv} @@ plainto_tsquery('simple', ${q}) or ${teamMessages.content} ilike ${like})`,
+  );
+}
+
+export type CrossMessageHit = {
+  id: string;
+  channelId: string;
+  notebookId: string;
+  channelName: string | null;
+  channelType: ChannelRow["type"];
+  content: string;
+  senderName: string;
+  createdAt: Date;
+};
+
+/** Tìm tin nhắn trên nhiều sổ tay cùng lúc, chỉ trong các kênh user thuộc về (DM của người khác không bao giờ xuất hiện). */
+export async function searchMessagesAcross(opts: { viewerId: string; notebookIds: string[]; q: string; limit: number }): Promise<CrossMessageHit[]> {
+  if (opts.notebookIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: teamMessages.id,
+      channelId: teamMessages.channelId,
+      notebookId: channels.notebookId,
+      channelName: channels.name,
+      channelType: channels.type,
+      content: teamMessages.content,
+      senderName: users.name,
+      createdAt: teamMessages.createdAt,
+    })
+    .from(teamMessages)
+    .innerJoin(channels, eq(channels.id, teamMessages.channelId))
+    .innerJoin(channelMembers, and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, opts.viewerId)))
+    .innerJoin(users, eq(users.id, teamMessages.senderId))
+    .where(and(inArray(channels.notebookId, opts.notebookIds), messageMatches(opts.q)))
+    .orderBy(desc(teamMessages.createdAt), desc(teamMessages.id))
+    .limit(opts.limit);
+  return rows;
+}
+
 /**
  * Tìm tin nhắn bằng full-text (`tsv`) + ILIKE dự phòng, giới hạn ở các kênh user thuộc về.
  * `channelId` bỏ trống → mọi kênh của user trong notebook.
@@ -141,14 +186,11 @@ export async function searchMessages(opts: {
   limit: number;
 }): Promise<(MessageDTO & { channelName: string | null; channelType: ChannelRow["type"] })[]> {
   const { viewerId, notebookId, channelId, q, limit } = opts;
-  const like = `%${escapeLike(q)}%`;
   const where = and(
     eq(channels.notebookId, notebookId),
     eq(channelMembers.userId, viewerId),
     channelId ? eq(teamMessages.channelId, channelId) : undefined,
-    isNull(teamMessages.deletedAt),
-    isNull(teamMessages.recalledAt),
-    sql`(${teamMessages.tsv} @@ plainto_tsquery('simple', ${q}) or ${teamMessages.content} ilike ${like})`,
+    messageMatches(q),
   );
   const rows = await db
     .select({ m: teamMessages, channelName: channels.name, channelType: channels.type })

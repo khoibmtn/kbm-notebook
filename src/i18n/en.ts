@@ -1,4 +1,5 @@
 import { chatEn } from "./modules/chat.en";
+import { communityEn } from "./modules/community.en";
 import { connectorsEn } from "./modules/connectors.en";
 import { slidesEn } from "./modules/slides.en";
 import { studioEn } from "./modules/studio.en";
@@ -134,6 +135,7 @@ export const en: Record<MessageKey, string> = {
   "notifications.empty": "No notifications yet",
 
   ...chatEn,
+  ...communityEn,
   ...connectorsEn,
   ...slidesEn,
   ...studioEn,
