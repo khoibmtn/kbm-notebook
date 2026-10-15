@@ -127,7 +127,7 @@ export async function generateArtifactNow(
 
     await report(90, t("studio.stage.saving"));
     // Ảnh AI do engine slide trả dạng dataUrl → lưu vào kho tệp, thay bằng fileId trước khi ghi phiên bản.
-    const raw = artifact.type === "slide_deck" ? await persistSlideImages(generated.content as SlideDeckContent, userId, artifact.title) : generated.content;
+    const raw = artifact.type === "slide_deck" ? await persistSlideImages(generated.content as SlideDeckContent, userId, artifact) : generated.content;
     const content = contentSchemaFor(artifact.type).parse(raw);
     const note = payload.reason === "create" ? t("studio.version.generatedNote") : t("studio.version.regeneratedNote");
     const version = await addVersion(artifact.id, { content, userId, note, setStatusReady: true });

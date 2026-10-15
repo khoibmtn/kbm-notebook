@@ -21,6 +21,8 @@ const testEnv = {
   GOOGLE_CLIENT_SECRET: "",
   STORAGE_DIR: path.resolve(import.meta.dirname, "storage/.test"),
   MAX_UPLOAD_MB: "1",
+  // Bridge giả trong test chạy ở localhost
+  CONNECTORS_ALLOW_PRIVATE_HOSTS: "true",
 };
 
 export default defineConfig({

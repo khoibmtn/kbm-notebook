@@ -1,5 +1,7 @@
 import { Readable } from "node:stream";
 import { ApiError, handleRoute, isUuid } from "@/server/api/errors";
+import { enforceRateLimit } from "@/server/api/rate-limit";
+import { clientIp } from "@/server/api/client-ip";
 import { requireUser } from "@/server/auth/session";
 import { canAccessFile, canAccessFileViaShare, getFile } from "@/server/storage/files";
 import { getStorage } from "@/server/storage/local";
@@ -7,11 +9,18 @@ import { getStorage } from "@/server/storage/local";
 // Các MIME có thể thực thi script trong trình duyệt → luôn tải xuống, không hiển thị inline.
 const FORCE_DOWNLOAD = /^(text\/html|image\/svg\+xml|application\/xhtml\+xml|text\/xml|application\/xml)/i;
 
+/** Số lượt truy cập tệp bằng `?share=` mỗi IP mỗi phút. */
+const SHARE_RATE_LIMIT = 300;
+
 export const GET = handleRoute<{ id: string }>(async (req, { params }) => {
   const { id } = await params;
   if (!isUuid(id)) throw ApiError.notFound("Không tìm thấy tệp");
   const share = new URL(req.url).searchParams.get("share");
   // Khách mở liên kết chia sẻ artifact (`?share=<token>`) được đọc ảnh của chính artifact đó, không cần đăng nhập.
+  // Truy cập chưa xác thực bị giới hạn tần suất theo IP (mỗi yêu cầu vẫn chỉ tốn tra cứu theo chỉ mục).
+  if (share) {
+    await enforceRateLimit(`files:share:${clientIp(req)}`, SHARE_RATE_LIMIT, 60_000, "Bạn truy cập tệp chia sẻ quá nhanh. Thử lại sau khoảng {minutes} phút.");
+  }
   const viaShare = share ? await canAccessFileViaShare(share, id) : false;
   const user = viaShare ? null : (await requireUser()).user;
   const file = await getFile(id);

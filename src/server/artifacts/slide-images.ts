@@ -2,7 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { files } from "@/server/db/schema";
-import { canAccessFile } from "@/server/storage/files";
+import { canAccessFile, registerArtifactFile } from "@/server/storage/files";
 import { getStorage } from "@/server/storage/local";
 import { parseDataUrl, probeImage } from "./slides/image-util";
 import type { SlideDeckContent } from "./registry";
@@ -18,7 +18,12 @@ const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "
  * (chủ tệp = người tạo artifact), đổi sang `image.fileId` và XOÁ `dataUrl` để JSON không phình ra.
  * Ảnh không giải mã được thì giữ `prompt` và bỏ `dataUrl` (slide vẫn dùng được, người dùng tạo/tải ảnh lại).
  */
-export async function persistSlideImages(content: SlideDeckContent, ownerId: string, title = "slide"): Promise<SlideDeckContent> {
+export async function persistSlideImages(
+  content: SlideDeckContent,
+  ownerId: string,
+  artifact: { id: string; notebookId: string; title: string },
+): Promise<SlideDeckContent> {
+  const title = artifact.title || "slide";
   const slides = content.slides as SlideLike[];
   if (!slides.some((s) => s.image?.dataUrl)) return content;
   const storage = getStorage();
@@ -42,7 +47,10 @@ export async function persistSlideImages(content: SlideDeckContent, ownerId: str
       ownerId,
       mime: parsed.mime,
       name: `${title.replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 40) || "slide"}-${n}.${EXT[parsed.mime] ?? "img"}`,
+      notebookId: artifact.notebookId,
+      origin: "artifact_image",
     });
+    await registerArtifactFile(artifact.id, stored.id);
     out.push({ ...slide, image: { prompt: "", ...rest, fileId: stored.id } });
   }
   return { ...content, slides: out as SlideDeckContent["slides"] };

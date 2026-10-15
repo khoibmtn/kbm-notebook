@@ -64,7 +64,7 @@ async function resolveVersion(artifact: Artifact, versionId?: string): Promise<A
 
 /** Dựng bản xuất, lưu tệp (chủ tệp = người yêu cầu) và ghi `artifact_exports`. */
 export async function produceExport(params: {
-  artifact: Pick<Artifact, "id" | "type" | "title">;
+  artifact: Pick<Artifact, "id" | "notebookId" | "type" | "title">;
   version: ArtifactVersionRow;
   format: ExportFormat;
   userId: string;
@@ -80,7 +80,13 @@ export async function produceExport(params: {
     },
     format,
   );
-  const stored = await getStorage().put(out.buffer, { ownerId: userId, mime: out.mime, name: out.fileName });
+  const stored = await getStorage().put(out.buffer, {
+    ownerId: userId,
+    mime: out.mime,
+    name: out.fileName,
+    notebookId: artifact.notebookId,
+    origin: "export",
+  });
   const [row] = await db
     .insert(artifactExports)
     .values({ artifactId: artifact.id, versionId: version.id, format, fileId: stored.id })

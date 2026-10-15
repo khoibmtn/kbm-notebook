@@ -15,6 +15,13 @@
       "when": 1792051451912,
       "tag": "0001_connectors_enc",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792058298921,
+      "tag": "0002_security_indexes",
+      "breakpoints": true
     }
   ]
 }

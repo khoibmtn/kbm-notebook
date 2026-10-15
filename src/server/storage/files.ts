@@ -1,13 +1,15 @@
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { isUuid } from "@/server/api/errors";
 import { db } from "@/server/db";
 import {
   artifactExports,
-  artifactVersions,
+  artifactFiles,
   artifacts,
   channelMembers,
   files,
   messageAttachments,
+  notebooks,
   sources,
   teamMessages,
   type FileRow,
@@ -74,36 +76,46 @@ registerFileAccessRule(async (userId, file) => {
 });
 
 /**
- * Ảnh nằm trong nội dung artifact (slide `image.fileId`, infographic `imageFileId`): ai `canViewArtifact` đều đọc được.
- * Tìm bằng `jsonb_path_exists` trên các phiên bản của artifact loại slide_deck/infographic (chính xác, không khớp chuỗi).
+ * Ảnh của artifact (slide `image.fileId`, infographic `imageFileId`): chỉ các tệp mà SERVER đã đăng ký cho artifact
+ * trong bảng `artifact_files` (khi tải ảnh lên / sinh ảnh). Nội dung JSON do người sửa gửi lên KHÔNG đủ để cấp quyền đọc tệp.
+ * Ai `canViewArtifact` đều đọc được. Tra cứu theo khoá chính — không quét `artifact_versions`.
  */
-async function artifactsReferencingFile(fileId: string) {
-  return db
-    .selectDistinct({ a: artifacts })
-    .from(artifactVersions)
-    .innerJoin(artifacts, eq(artifacts.id, artifactVersions.artifactId))
-    .where(
-      and(
-        isNull(artifacts.deletedAt),
-        sql`${artifacts.type} in ('slide_deck', 'infographic')`,
-        sql`(jsonb_path_exists(${artifactVersions.content}, '$.slides[*].image.fileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text))
-          or jsonb_path_exists(${artifactVersions.content}, '$.imageFileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text)))`,
-      ),
-    );
-}
-
 registerFileAccessRule(async (userId, file) => {
-  for (const { a } of await artifactsReferencingFile(file.id)) if (await canViewArtifact(userId, a)) return true;
+  const rows = await db
+    .select({ a: artifacts })
+    .from(artifactFiles)
+    .innerJoin(artifacts, eq(artifacts.id, artifactFiles.artifactId))
+    .where(and(eq(artifactFiles.fileId, file.id), isNull(artifacts.deletedAt)));
+  for (const { a } of rows) if (await canViewArtifact(userId, a)) return true;
   return false;
 });
 
-/** Khách mở liên kết chia sẻ (`?share=<token>`): đọc được ảnh được tham chiếu bởi đúng artifact đó. */
+/** Ghi nhận (phía server) một tệp ảnh thuộc artifact. */
+export async function registerArtifactFile(artifactId: string, fileId: string): Promise<void> {
+  await db.insert(artifactFiles).values({ artifactId, fileId }).onConflictDoNothing();
+}
+
+/**
+ * Khách mở liên kết chia sẻ (`?share=<token>`): trước hết quy token về MỘT artifact (cột `share_token` có unique index),
+ * artifact phải còn sống, sổ tay chưa xoá, visibility link/public; sau đó chỉ kiểm tệp có thuộc artifact đó
+ * (khoá chính `artifact_files`) và đang được phiên bản HIỆN TẠI của nó tham chiếu. Không quét bảng phiên bản.
+ */
 export async function canAccessFileViaShare(shareToken: string, fileId: string): Promise<boolean> {
-  if (!shareToken || shareToken.length < 16) return false;
-  for (const { a } of await artifactsReferencingFile(fileId)) {
-    if (a.shareToken === shareToken && (a.visibility === "link" || a.visibility === "public")) return true;
-  }
-  return false;
+  if (!shareToken || shareToken.length < 16 || shareToken.length > 128 || !isUuid(fileId)) return false;
+  const [row] = await db
+    .select({ id: artifacts.id, versionId: artifacts.currentVersionId })
+    .from(artifacts)
+    .innerJoin(notebooks, and(eq(notebooks.id, artifacts.notebookId), isNull(notebooks.deletedAt)))
+    .innerJoin(artifactFiles, and(eq(artifactFiles.artifactId, artifacts.id), eq(artifactFiles.fileId, fileId)))
+    .where(and(eq(artifacts.shareToken, shareToken), isNull(artifacts.deletedAt), inArray(artifacts.visibility, ["link", "public"])))
+    .limit(1);
+  if (!row?.versionId) return false;
+  const ref = await db.execute(sql`
+    SELECT 1 FROM artifact_versions
+    WHERE id = ${row.versionId}
+      AND (jsonb_path_exists(content, '$.slides[*].image.fileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text))
+        OR jsonb_path_exists(content, '$.imageFileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text)))`);
+  return ref.rows.length > 0;
 }
 
 /**
@@ -119,3 +131,43 @@ export async function canAccessFile(userId: string, fileId: string): Promise<boo
   return false;
 }
 
+
+/** Còn dòng nào tham chiếu tệp này không (nguồn chưa xoá, đính kèm tin nhắn, tệp xuất, ảnh artifact)? */
+async function isFileReferenced(fileId: string, opts: { exceptSourceId?: string } = {}): Promise<boolean> {
+  const res = await db.execute(sql`
+    SELECT 1 WHERE
+      EXISTS (SELECT 1 FROM sources WHERE file_id = ${fileId} AND deleted_at IS NULL ${opts.exceptSourceId ? sql`AND id <> ${opts.exceptSourceId}` : sql``})
+      OR EXISTS (SELECT 1 FROM message_attachments WHERE file_id = ${fileId})
+      OR EXISTS (SELECT 1 FROM artifact_exports WHERE file_id = ${fileId})
+      OR EXISTS (SELECT 1 FROM artifact_files WHERE file_id = ${fileId})`);
+  return res.rows.length > 0;
+}
+
+/** Xoá tệp (byte + dòng) khi không còn gì tham chiếu — dùng khi xoá nguồn / thu hồi tin nhắn để dung lượng được trả lại. */
+export async function deleteFileIfUnreferenced(fileId: string | null | undefined, opts: { exceptSourceId?: string } = {}): Promise<boolean> {
+  if (!fileId) return false;
+  if (await isFileReferenced(fileId, opts)) return false;
+  await deleteStoredFile(fileId);
+  return true;
+}
+
+/** Tuổi tối thiểu (giờ) của tệp tải lên từ chat mà chưa gắn vào tin nhắn nào thì bị dọn. */
+export const ORPHAN_FILE_MAX_AGE_HOURS = 24;
+
+/**
+ * Dọn tệp mồ côi: tệp `origin='chat_upload'` quá hạn mà không còn tin nhắn / nguồn nào tham chiếu
+ * (người dùng chọn tệp rồi không gửi, hoặc đã thu hồi). Trả số tệp đã xoá.
+ */
+export async function cleanupOrphanFiles(opts: { maxAgeHours?: number; limit?: number } = {}): Promise<number> {
+  const cutoff = new Date(Date.now() - (opts.maxAgeHours ?? ORPHAN_FILE_MAX_AGE_HOURS) * 3_600_000);
+  const rows = await db
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.origin, "chat_upload"), lt(files.createdAt, cutoff)))
+    .limit(opts.limit ?? 500);
+  let removed = 0;
+  for (const { id } of rows) {
+    if (await deleteFileIfUnreferenced(id)) removed += 1;
+  }
+  return removed;
+}

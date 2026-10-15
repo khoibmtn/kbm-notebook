@@ -72,6 +72,8 @@ export class LocalDiskStorage implements StorageAdapter {
           mime: meta.mime || "application/octet-stream",
           sizeBytes: size,
           sha256: hash.digest("hex"),
+          notebookId: meta.notebookId ?? null,
+          origin: meta.origin ?? null,
         })
         .returning();
       return row;

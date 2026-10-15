@@ -17,7 +17,6 @@ import {
   type TeamMessageContentJson,
 } from "@/server/db/schema";
 import { enqueue } from "@/server/jobs/queue";
-import { getStorage } from "@/server/storage/local";
 import { hasRole } from "@/lib/roles";
 import { toPlainPreview } from "@/lib/team-chat/markdown";
 import { parseMentionIds } from "@/lib/team-chat/mentions";
@@ -483,23 +482,6 @@ export async function setChannelMuted(access: ChannelAccess, userId: string, mut
 }
 
 /* ------------------------------ Tệp đính kèm ------------------------------ */
-
-export type UploadedAttachment = { fileId: string; name: string; mime: string; size: number };
-
-export async function storeAttachments(userId: string, uploads: File[]): Promise<UploadedAttachment[]> {
-  const out: UploadedAttachment[] = [];
-  const storage = getStorage();
-  for (const f of uploads) {
-    const buf = Buffer.from(await f.arrayBuffer());
-    const row = await storage.put(buf, {
-      ownerId: userId,
-      mime: f.type || "application/octet-stream",
-      name: f.name || "tệp",
-    });
-    out.push({ fileId: row.id, name: row.originalName, mime: row.mime, size: row.sizeBytes });
-  }
-  return out;
-}
 
 /* ------------------------------ Chuyển vào Nguồn ------------------------------ */
 

@@ -8,6 +8,10 @@ export type PutMeta = {
   mime: string;
   /** Tên gốc người dùng thấy (không dùng làm đường dẫn lưu). */
   name: string;
+  /** Sổ tay chịu dung lượng của tệp (quota `MAX_NOTEBOOK_STORAGE_MB`). */
+  notebookId?: string | null;
+  /** Nguồn gốc tệp: `chat_upload` | `source_upload` | `artifact_image` | `export` | `drive`. */
+  origin?: string;
 };
 
 /** Contract lưu trữ tệp (docs/02). Triển khai: LocalDiskStorage; S3 sau. */

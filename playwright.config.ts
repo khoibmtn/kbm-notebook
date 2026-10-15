@@ -37,6 +37,8 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       NEXT_PUBLIC_APP_URL: baseURL,
       AI_PROVIDER: "mock",
+      // Bridge giả của e2e chạy ở localhost
+      CONNECTORS_ALLOW_PRIVATE_HOSTS: "true",
     },
   },
 });

@@ -308,9 +308,17 @@ export const files = pgTable(
     mime: text("mime").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     sha256: text("sha256").notNull(),
+    /** Sổ tay mà tệp được tính dung lượng (quota `MAX_NOTEBOOK_STORAGE_MB`); null = không thuộc sổ tay nào (vd. ảnh đại diện). */
+    notebookId: uuid("notebook_id").references((): AnyPgColumn => notebooks.id, { onDelete: "set null" }),
+    /** Nguồn gốc tệp: `chat_upload` (tải lên từ chat, có thể mồ côi), `source_upload`, `artifact_image`, `export`, `drive`… */
+    origin: text("origin"),
     createdAt: createdAt(),
   },
-  (t) => [index("files_owner_idx").on(t.ownerId)],
+  (t) => [
+    index("files_owner_idx").on(t.ownerId),
+    index("files_notebook_idx").on(t.notebookId),
+    index("files_origin_created_idx").on(t.origin, t.createdAt),
+  ],
 );
 
 export const sources = pgTable(
@@ -528,6 +536,8 @@ export const artifacts = pgTable(
     }),
     visibility: artifactVisibilityEnum("visibility").default("notebook").notNull(),
     shareToken: text("share_token").unique(),
+    /** Nội dung có thể chứa trích đoạn từ nguồn riêng tư → không được chia sẻ rộng hơn `private`. */
+    containsPrivateSources: boolean("contains_private_sources").default(false).notNull(),
     generationConfig: jsonb("generation_config").$type<Record<string, unknown>>(),
     forkedFromId: uuid("forked_from_id").references((): AnyPgColumn => artifacts.id, {
       onDelete: "set null",
@@ -570,6 +580,21 @@ export const artifactExports = pgTable("artifact_exports", {
     .references(() => files.id),
   createdAt: createdAt(),
 });
+
+/** Ảnh (files) thuộc một artifact — chỉ do server ghi khi tải ảnh lên / sinh ảnh cho artifact đó. Dùng cho luật truy cập tệp. */
+export const artifactFiles = pgTable(
+  "artifact_files",
+  {
+    artifactId: uuid("artifact_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.artifactId, t.fileId] }), index("artifact_files_file_idx").on(t.fileId)],
+);
 
 export const artifactShares = pgTable(
   "artifact_shares",

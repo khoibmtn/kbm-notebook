@@ -4,10 +4,12 @@ import { ApiError } from "@/server/api/errors";
 import { canViewSource, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
 import { db } from "@/server/db";
-import { notes, sourceChunks, sources, type Source } from "@/server/db/schema";
+import { notes, sourceChunks, sources, type FileRow, type Source } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { enqueue } from "@/server/jobs/queue";
 import { getStorage } from "@/server/storage/local";
+import { deleteFileIfUnreferenced } from "@/server/storage/files";
+import { assertNotebookQuota } from "@/server/storage/quota";
 import {
   detectFileType,
   type SourceChunkRef,
@@ -228,50 +230,82 @@ export const MIME_BY_TYPE: Record<SourceFileType, string> = {
   json: "application/json",
 };
 
-/** Lưu tệp tải lên + tạo nguồn `pending` + xếp job ingest. Ném 415 (loại không hỗ trợ) / 413 (quá lớn). */
-export async function createSourceFromFile(input: {
+/** Xác định loại tệp từ tên + MIME; ném 415 nếu chưa hỗ trợ. */
+export function sourceTypeOrThrow(name: string, mime: string | null | undefined): SourceFileType {
+  const type = detectFileType(name, mime);
+  if (!type) {
+    throw new ApiError(415, "unsupported_type", `Định dạng tệp "${name}" chưa được hỗ trợ (PDF, DOCX, PPTX, XLSX, CSV, MD, TXT, HTML, JSON)`);
+  }
+  return type;
+}
+
+/** Tạo nguồn `pending` từ tệp ĐÃ nằm trong kho (`files`) + xếp job ingest. */
+export async function createSourceFromStoredFile(input: {
   notebookId: string;
   userId: string;
-  file: File;
+  stored: FileRow;
+  /** Tên hiển thị gốc của tệp. */
+  name: string;
+  type: SourceFileType;
   visibility: SourceVisibility;
   /** Mặc định `file`; Google Drive dùng `drive` (cùng cách xử lý, khác nguồn gốc). */
   kind?: "file" | "drive";
   /** Trộn vào `metadata` (vd. `driveFileId`). */
   metadata?: Record<string, unknown>;
 }): Promise<Source> {
-  const { file } = input;
-  const type = detectFileType(file.name, file.type);
-  if (!type) {
-    throw new ApiError(415, "unsupported_type", `Định dạng tệp "${file.name}" chưa được hỗ trợ (PDF, DOCX, PPTX, XLSX, CSV, MD, TXT, HTML, JSON)`);
-  }
-  const maxMb = env().MAX_UPLOAD_MB;
-  if (file.size > maxMb * 1024 * 1024) {
-    throw new ApiError(413, "payload_too_large", `Tệp "${file.name}" vượt quá giới hạn ${maxMb}MB`);
-  }
-  if (file.size === 0) throw ApiError.badRequest(`Tệp "${file.name}" trống`);
-  const mime = MIME_BY_TYPE[type];
-  const stored = await getStorage().put(Buffer.from(await file.arrayBuffer()), {
-    ownerId: input.userId,
-    mime: file.type && file.type !== "application/octet-stream" ? file.type : mime,
-    name: cleanTitle(file.name),
-  });
+  const title = cleanTitle(input.name);
   const [row] = await db
     .insert(sources)
     .values({
       notebookId: input.notebookId,
       createdBy: input.userId,
       kind: input.kind ?? "file",
-      title: cleanTitle(file.name),
-      mime: stored.mime,
-      fileId: stored.id,
+      title,
+      mime: input.stored.mime,
+      fileId: input.stored.id,
       visibility: input.visibility,
       status: "pending",
-      metadata: { fileType: type, progress: 0, originalName: cleanTitle(file.name), ...input.metadata },
+      metadata: { fileType: input.type, progress: 0, originalName: title, ...input.metadata },
     })
     .returning();
   await enqueueIngest(row);
   emitSourceEvent(row, "created");
   return row;
+}
+
+/** MIME lưu cho tệp: tin MIME khách gửi nếu cụ thể, ngược lại suy từ loại tệp. */
+export function storedMimeFor(type: SourceFileType, clientMime: string | null | undefined): string {
+  return clientMime && clientMime !== "application/octet-stream" ? clientMime : MIME_BY_TYPE[type];
+}
+
+/**
+ * Lưu tệp (đã nằm trong RAM — vd. tải từ Google Drive) + tạo nguồn `pending` + xếp job ingest.
+ * Ném 415 (loại không hỗ trợ) / 413 (quá lớn hoặc vượt quota sổ tay). Upload từ trình duyệt dùng `receiveMultipart` (stream).
+ */
+export async function createSourceFromFile(input: {
+  notebookId: string;
+  userId: string;
+  file: File;
+  visibility: SourceVisibility;
+  kind?: "file" | "drive";
+  metadata?: Record<string, unknown>;
+}): Promise<Source> {
+  const { file } = input;
+  const type = sourceTypeOrThrow(file.name, file.type);
+  const maxMb = env().MAX_UPLOAD_MB;
+  if (file.size > maxMb * 1024 * 1024) {
+    throw new ApiError(413, "payload_too_large", `Tệp "${file.name}" vượt quá giới hạn ${maxMb}MB`);
+  }
+  if (file.size === 0) throw ApiError.badRequest(`Tệp "${file.name}" trống`);
+  await assertNotebookQuota(input.notebookId, file.size);
+  const stored = await getStorage().put(Buffer.from(await file.arrayBuffer()), {
+    ownerId: input.userId,
+    mime: storedMimeFor(type, file.type),
+    name: cleanTitle(file.name),
+    notebookId: input.notebookId,
+    origin: input.kind === "drive" ? "drive" : "source_upload",
+  });
+  return createSourceFromStoredFile({ ...input, stored, name: file.name, type });
 }
 
 const YOUTUBE_HOST = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i;
@@ -366,6 +400,8 @@ export async function deleteSource(row: Source): Promise<void> {
     if (typeof noteId === "string") await tx.update(notes).set({ isSource: false }).where(eq(notes.id, noteId));
   });
   emitSourceEvent({ ...row }, "deleted", { toNotebook: true });
+  // Trả lại dung lượng: tệp gốc chỉ còn dùng cho nguồn này thì xoá luôn (L-5).
+  await deleteFileIfUnreferenced(row.fileId, { exceptSourceId: row.id }).catch(() => {});
 }
 
 /** Đặt lại về `pending` và xếp job mới. Chỉ cho nguồn đã `ready`/`failed`. */

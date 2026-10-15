@@ -473,6 +473,10 @@ export async function forkArtifact(artifact: Artifact, userId: string): Promise<
       })
       .returning();
     await addVersion(row.id, { content: cur.content, userId, note: t("studio.version.forkedNote", { title: artifact.title }) }, tx);
+    // Bản sao dùng cùng ảnh: ghi nhận phía server các tệp ảnh của bản gốc cho bản sao.
+    await tx.execute(
+      sql`insert into artifact_files (artifact_id, file_id) select ${row.id}, file_id from artifact_files where artifact_id = ${artifact.id} on conflict do nothing`,
+    );
     const [fresh] = await tx.select().from(artifacts).where(eq(artifacts.id, row.id)).limit(1);
     return fresh;
   });
