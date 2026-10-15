@@ -16,6 +16,8 @@ export type TextRequest = {
   tools?: { googleSearch?: boolean };
   /** Chỉ dùng cho MockAiProvider: JSON trả về khi có jsonSchema. */
   __mockJson?: unknown;
+  /** Chỉ dùng cho MockAiProvider: khoá để tra JSON đã đăng ký (`registerMockJson`), vd `artifact:quiz`. */
+  __mockKey?: string;
 };
 
 export type TextResult = { text: string; json?: unknown; usage?: Usage; webSources?: WebSource[] };

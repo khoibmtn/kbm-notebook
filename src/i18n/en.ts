@@ -1,7 +1,9 @@
+import { studioEn } from "./modules/studio.en";
 import type { MessageKey } from "./vi";
 
 /** English dictionary. Must contain every key from vi.ts (enforced by the type). */
 export const en: Record<MessageKey, string> = {
+  ...studioEn,
   "app.name": "KBM Notebook",
   "app.description": "Learn and collaborate with AI: sources, cited chat, studio and team chat.",
 

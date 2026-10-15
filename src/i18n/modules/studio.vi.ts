@@ -1,0 +1,22 @@
+/** Chuỗi giao diện/bản xuất của Studio (P3). Được trải làm mục ĐẦU TIÊN của `vi`. */
+export const studioVi = {
+  "studio.export.sources": "Nguồn",
+  "studio.export.answer": "Đáp án",
+  "studio.export.explanation": "Giải thích",
+  "studio.export.unsupported": "Định dạng xuất này chưa được hỗ trợ cho loại artifact đã chọn",
+  "studio.quiz.true": "Đúng",
+  "studio.quiz.false": "Sai",
+  "studio.flashcards.hint": "Gợi ý",
+  "studio.version.generatedNote": "Tạo bằng AI",
+  "studio.version.regeneratedNote": "Tạo lại bằng AI",
+  "studio.version.editedNote": "Chỉnh sửa",
+  "studio.version.restoredNote": "Khôi phục từ phiên bản {n}",
+  "studio.version.forkedNote": 'Nhân bản từ "{title}"',
+  "studio.fork.title": "{title} (bản sao)",
+  "studio.stage.start": "Đang chuẩn bị",
+  "studio.stage.retrieving": "Đang đọc nguồn",
+  "studio.stage.context": "Đang dựng ngữ cảnh",
+  "studio.stage.generating": "Đang tạo nội dung",
+  "studio.stage.saving": "Đang lưu",
+  "studio.stage.retrying": "Gặp lỗi tạm thời, đang thử lại",
+} as const;
