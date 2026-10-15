@@ -272,6 +272,7 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
         citations: checked.citations,
         sourcesUsed: checked.sourcesUsed,
         insufficientEvidence: checked.insufficientEvidence,
+        insufficientReason: checked.insufficientReason,
         scope: finalScope as MessageScope,
         model: modelLabel,
         usage: chatUsage as Record<string, unknown> | null,
@@ -287,6 +288,7 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
       citations: checked.citations,
       sourcesUsed: checked.sourcesUsed,
       insufficientEvidence: checked.insufficientEvidence,
+      insufficientReason: checked.insufficientReason,
       usage: chatUsage,
       model: saved.model,
     };

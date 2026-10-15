@@ -91,9 +91,18 @@ describe("isInsufficientEvidence", () => {
     expect(isInsufficientEvidence([ev(1, { similarity: 0.1 }), ev(2, { similarity: 0.24 })])).toBe(true);
     expect(isInsufficientEvidence([ev(1, { similarity: 0.1 }), ev(2, { similarity: 0.25 })])).toBe(false);
   });
-  it("bằng chứng không có similarity (web / chỉ khớp từ khoá) coi là liên quan", () => {
+  it("không đoạn trích nào có similarity (chỉ web / kho ngoài) → không đủ cơ sở kết luận thiếu theo ngưỡng", () => {
     expect(isInsufficientEvidence([ev(1, { similarity: undefined })])).toBe(false);
-    expect(isInsufficientEvidence([ev(1, { similarity: 0.05 }), ev(2, { provider: "web", similarity: undefined })])).toBe(false);
+    expect(isInsufficientEvidence([ev(1, { provider: "web", kind: "web", similarity: undefined })])).toBe(false);
+  });
+  it("M-4: chỉ tính trên đoạn trích có similarity — web / external_answer / đoạn thiếu similarity không làm tắt cảnh báo", () => {
+    const weak = ev(1, { similarity: 0.05 });
+    expect(isInsufficientEvidence([weak, ev(2, { provider: "web", kind: "web", similarity: undefined })])).toBe(true);
+    expect(isInsufficientEvidence([weak, ev(2, { provider: "notebooklm-bridge", kind: "external_answer", similarity: undefined })])).toBe(true);
+    expect(isInsufficientEvidence([weak, ev(3, { similarity: undefined })])).toBe(true); // đoạn chỉ khớp từ khoá ngoài top vector
+    expect(isInsufficientEvidence([weak, ev(4, { similarity: 0.6 })])).toBe(false);
+    // web/external có similarity (bất thường) cũng không được tính
+    expect(isInsufficientEvidence([weak, ev(5, { kind: "web", similarity: 0.9 })])).toBe(true);
   });
 });
 
@@ -139,6 +148,23 @@ describe("postCheckAnswer", () => {
   it("không có bằng chứng → insufficientEvidence và loại mọi [n]", () => {
     const r = postCheckAnswer("Trả lời bịa [1].", []);
     expect(r.insufficientEvidence).toBe(true);
+    expect(r.insufficientReason).toBe("no_evidence");
     expect(r.content).toBe("Trả lời bịa.");
+  });
+  it("M-4: có bằng chứng nhưng câu trả lời không có [n] hợp lệ nào → insufficientEvidence, lý do no_citations", () => {
+    const strong = [ev(1, { similarity: 0.8 }), ev(2, { similarity: 0.7 })];
+    const noCite = postCheckAnswer("Theo kiến thức riêng của tôi thì điều này đúng.", strong);
+    expect(noCite).toMatchObject({ insufficientEvidence: true, insufficientReason: "no_citations", usedNumbers: [] });
+    const onlyInvalid = postCheckAnswer("Điều này đúng [9].", strong);
+    expect(onlyInvalid).toMatchObject({ insufficientEvidence: true, insufficientReason: "no_citations" });
+    const cited = postCheckAnswer("Điều này đúng [1].", strong);
+    expect(cited).toMatchObject({ insufficientEvidence: false, insufficientReason: null });
+  });
+  it("lý do: not_found / low_similarity / no_evidence; trả lời web không trích dẫn vẫn bị cảnh báo", () => {
+    expect(postCheckAnswer(`${NOT_FOUND_SENTINEL}.`, [ev(1, { similarity: 0.9 })]).insufficientReason).toBe("not_found");
+    expect(postCheckAnswer("Trả lời [1].", [ev(1, { similarity: 0.1 })]).insufficientReason).toBe("low_similarity");
+    const web = [ev(1, { provider: "web", kind: "web", similarity: undefined })];
+    expect(postCheckAnswer("Trả lời từ web mà không dẫn nguồn.", web).insufficientReason).toBe("no_citations");
+    expect(postCheckAnswer("Trả lời từ web [1].", web).insufficientEvidence).toBe(false);
   });
 });

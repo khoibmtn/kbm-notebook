@@ -156,6 +156,8 @@ describe("upload → ingest → search", () => {
       const { evidence } = await doSearch(notebook.id, owner, { query: `Tell me about ${topic}` });
       expect(evidence[0].locator.page, `trang ${n}`).toBe(n);
       expect(evidence[0].text).toContain(topic);
+      // M-4: mọi đoạn (kể cả đoạn chỉ khớp từ khoá, ngoài top-30 vector) đều có similarity để xét ngưỡng "thiếu bằng chứng"
+      expect(evidence.every((e) => typeof e.similarity === "number"), `trang ${n}`).toBe(true);
     }
   });
 

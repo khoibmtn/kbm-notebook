@@ -10,4 +10,5 @@ export const securityVi = {
   "auth.verify.resendFailed": "Không gửi lại được email xác minh. Thử lại sau ít phút.",
   "auth.verify.registered": "Chúng tôi đã gửi email xác minh tới {email}.",
   "invite.verifyFirst": "Bạn cần xác minh email {email} trước khi tham gia sổ tay. Mở email xác minh đã gửi cho bạn rồi quay lại trang này.",
+  "security.chat.noCitations": "Câu trả lời này không trích dẫn nguồn nào nên chưa thể kiểm chứng. Hãy xem lại cẩn thận hoặc đặt câu hỏi cụ thể hơn, gắn với nội dung trong nguồn.",
 } as const;

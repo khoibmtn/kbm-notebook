@@ -8,6 +8,7 @@ CREATE TABLE "artifact_files" (
 ALTER TABLE "artifacts" ADD COLUMN "contains_private_sources" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "files" ADD COLUMN "notebook_id" uuid;--> statement-breakpoint
 ALTER TABLE "files" ADD COLUMN "origin" text;--> statement-breakpoint
+ALTER TABLE "messages" ADD COLUMN "insufficient_reason" text;--> statement-breakpoint
 ALTER TABLE "artifact_files" ADD CONSTRAINT "artifact_files_artifact_id_artifacts_id_fk" FOREIGN KEY ("artifact_id") REFERENCES "public"."artifacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "artifact_files" ADD CONSTRAINT "artifact_files_file_id_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."files"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "artifact_files_file_idx" ON "artifact_files" USING btree ("file_id");--> statement-breakpoint

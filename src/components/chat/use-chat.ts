@@ -186,6 +186,7 @@ export function useChat(notebookId: string) {
           citations: null,
           sourcesUsed: null,
           insufficientEvidence: false,
+          insufficientReason: null,
           scope: opts.scope,
           model: null,
           usage: null,

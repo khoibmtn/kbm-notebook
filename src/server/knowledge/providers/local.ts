@@ -106,7 +106,8 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
       : null;
     const textQuery = ftsQuery
       ? db
-          .select({ ...candidateColumns, rank: sql<number>`ts_rank(${sourceChunks.tsv}, ${ftsQuery})` })
+          // Tính cả cosine cho đoạn chỉ khớp từ khoá (ngoài top vector) để ngưỡng "thiếu bằng chứng" xét được MỌI đoạn
+          .select({ ...candidateColumns, rank: sql<number>`ts_rank(${sourceChunks.tsv}, ${ftsQuery})`, distance })
           .from(sourceChunks)
           .innerJoin(sources, eq(sources.id, sourceChunks.sourceId))
           .where(and(where, sql`${sourceChunks.tsv} @@ ${ftsQuery}`))
@@ -116,11 +117,11 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
 
     const [vectorRows, textRows] = await Promise.all([vectorQuery, textQuery]);
     const vec: Candidate[] = vectorRows.map((r) => ({ ...r, distance: Number(r.distance) }));
-    const fts: Candidate[] = textRows.map((r) => ({ ...r }));
+    const fts: Candidate[] = textRows.map((r) => ({ ...r, distance: r.distance === null || r.distance === undefined ? undefined : Number(r.distance) }));
 
     const merged = rrfMerge([vec, fts], (c) => c.id).slice(0, topK);
     return merged.map(({ item, score }) => {
-      const hit = vec.find((v) => v.id === item.id);
+      const hit = vec.find((v) => v.id === item.id) ?? fts.find((v) => v.id === item.id);
       const ev: Evidence = {
         id: item.id,
         provider: "local",

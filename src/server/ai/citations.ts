@@ -10,15 +10,39 @@ import { describeLocator } from "./context";
 export { INSUFFICIENT_SIMILARITY_THRESHOLD };
 export { findCitations, parseCitationNumbers, sanitizeCitations, stripCitations, containsNotFoundSentinel, NOT_FOUND_SENTINEL } from "@/lib/citations";
 
+/** Loại bằng chứng "đoạn trích" (mặc định): khác với câu trả lời tổng hợp của kho ngoài và kết quả web. */
+const isChunk = (e: Evidence) => (e.kind ?? "chunk") === "chunk";
+
 /**
- * "Thiếu bằng chứng" (docs/02 §3.3): không có bằng chứng nào, hoặc độ tương đồng tốt nhất < ngưỡng.
- * Ngưỡng chỉ áp dụng khi mọi bằng chứng đều có `similarity` (cosine); đoạn chỉ khớp từ khoá hoặc
- * kết quả web không có độ tương đồng vector nên được coi là có liên quan.
+ * "Thiếu bằng chứng" theo độ tương đồng (docs/02 §3.3): không có bằng chứng nào, hoặc độ tương đồng cosine tốt nhất
+ * của các ĐOẠN TRÍCH (kind = chunk) có similarity < ngưỡng. Chỉ tính trên các đoạn có similarity; kết quả web và
+ * câu trả lời tổng hợp của kho ngoài (`external_answer`) KHÔNG làm tắt cảnh báo. Nếu không đoạn nào có similarity
+ * (vd. chỉ kết quả web) thì không đủ cơ sở để kết luận thiếu theo ngưỡng.
  */
 export function isInsufficientEvidence(evidence: Evidence[], threshold = INSUFFICIENT_SIMILARITY_THRESHOLD): boolean {
   if (evidence.length === 0) return true;
-  if (!evidence.every((e) => e.similarity !== undefined)) return false;
-  return Math.max(...evidence.map((e) => e.similarity as number)) < threshold;
+  const scored = evidence.filter((e) => isChunk(e) && e.similarity !== undefined);
+  if (scored.length === 0) return false;
+  return Math.max(...scored.map((e) => e.similarity as number)) < threshold;
+}
+
+/**
+ * Lý do cảnh báo (null = đủ): `no_evidence` (không có bằng chứng) · `not_found` (mô hình tự nói không tìm thấy) ·
+ * `low_similarity` (đoạn trích tốt nhất dưới ngưỡng) · `no_citations` (có bằng chứng nhưng câu trả lời không có [n] hợp lệ nào).
+ */
+export type InsufficientReason = "no_evidence" | "not_found" | "low_similarity" | "no_citations";
+
+export function insufficientReasonFor(
+  content: string,
+  evidence: Evidence[],
+  usedNumbers: number[],
+  threshold = INSUFFICIENT_SIMILARITY_THRESHOLD,
+): InsufficientReason | null {
+  if (evidence.length === 0) return "no_evidence";
+  if (containsNotFoundSentinel(content)) return "not_found";
+  if (isInsufficientEvidence(evidence, threshold)) return "low_similarity";
+  if (usedNumbers.length === 0) return "no_citations";
+  return null;
 }
 
 function sourceKey(ev: Evidence): string {
@@ -59,6 +83,7 @@ export type PostCheckResult = {
   removedNumbers: number[];
   sourcesUsed: SourceUsed[];
   insufficientEvidence: boolean;
+  insufficientReason: InsufficientReason | null;
 };
 
 /**
@@ -68,12 +93,14 @@ export type PostCheckResult = {
 export function postCheckAnswer(rawAnswer: string, evidence: Evidence[]): PostCheckResult {
   const sanitized = sanitizeCitations(rawAnswer, evidence.length);
   const content = sanitized.text.trim();
+  const reason = insufficientReasonFor(content, evidence, sanitized.used);
   return {
     content,
     citations: evidence,
     usedNumbers: sanitized.used,
     removedNumbers: sanitized.removed,
     sourcesUsed: buildSourcesUsed(evidence, sanitized.used),
-    insufficientEvidence: isInsufficientEvidence(evidence) || containsNotFoundSentinel(content),
+    insufficientEvidence: reason !== null,
+    insufficientReason: reason,
   };
 }

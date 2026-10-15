@@ -12,4 +12,5 @@ export const securityEn: Record<keyof typeof securityVi, string> = {
   "auth.verify.resendFailed": "Could not resend the verification email. Try again in a few minutes.",
   "auth.verify.registered": "We sent a verification email to {email}.",
   "invite.verifyFirst": "You need to verify {email} before joining the notebook. Open the verification email we sent you, then come back to this page.",
+  "security.chat.noCitations": "This answer cites no source, so it cannot be verified. Review it carefully or ask a more specific question tied to the sources.",
 };

@@ -459,6 +459,8 @@ export const messages = pgTable(
     citations: jsonb("citations").$type<Evidence[]>(),
     sourcesUsed: jsonb("sources_used").$type<SourceUsed[]>(),
     insufficientEvidence: boolean("insufficient_evidence").default(false).notNull(),
+    /** Lý do cảnh báo "thiếu bằng chứng": no_evidence | low_similarity | not_found | no_citations (null = đủ). */
+    insufficientReason: text("insufficient_reason"),
     scope: jsonb("scope").$type<MessageScope>(),
     model: text("model"),
     usage: jsonb("usage").$type<Record<string, unknown>>(),

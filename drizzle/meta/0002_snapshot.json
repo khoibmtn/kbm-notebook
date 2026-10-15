@@ -1,5 +1,5 @@
 {
-  "id": "df58399a-d3c8-4da9-865b-d682e8bf38a9",
+  "id": "db6faa20-6acb-4263-93db-b264f28c4d97",
   "prevId": "26657ca9-fe2a-4950-a965-a4cfede43f5e",
   "version": "7",
   "dialect": "postgresql",
@@ -2116,6 +2116,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "insufficient_reason": {
+          "name": "insufficient_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "scope": {
           "name": "scope",

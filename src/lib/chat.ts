@@ -31,6 +31,8 @@ export type ConversationDto = {
   updatedAt: string;
 };
 
+export type InsufficientReasonDto = "no_evidence" | "not_found" | "low_similarity" | "no_citations";
+
 export type ChatMessageDto = {
   id: string;
   conversationId: string;
@@ -39,6 +41,8 @@ export type ChatMessageDto = {
   citations: Evidence[] | null;
   sourcesUsed: SourceUsed[] | null;
   insufficientEvidence: boolean;
+  /** Lý do cảnh báo thiếu bằng chứng (null nếu đủ). */
+  insufficientReason: InsufficientReasonDto | null;
   scope: ChatScope | null;
   model: string | null;
   usage: ChatUsage | null;
@@ -63,6 +67,7 @@ export type AskStreamEvent =
       citations: Evidence[];
       sourcesUsed: SourceUsed[];
       insufficientEvidence: boolean;
+      insufficientReason: InsufficientReasonDto | null;
       usage: ChatUsage | null;
       model: string | null;
     }

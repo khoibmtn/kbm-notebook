@@ -29,6 +29,7 @@ export function toMessageDto(row: Message): ChatMessageDto {
     citations: row.citations ?? null,
     sourcesUsed: row.sourcesUsed ?? null,
     insufficientEvidence: row.insufficientEvidence,
+    insufficientReason: (row.insufficientReason as ChatMessageDto["insufficientReason"]) ?? null,
     scope: row.scope ?? null,
     model: row.model,
     usage: (row.usage as ChatMessageDto["usage"]) ?? null,
