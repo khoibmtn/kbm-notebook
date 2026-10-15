@@ -47,11 +47,11 @@ function bridgeResult(over: Partial<BridgeAskResult> = {}): BridgeAskResult {
 }
 
 describe("bridgeResultToEvidence", () => {
-  it("câu trả lời của bridge là bằng chứng external_answer (xoá [n] riêng của bridge), kèm các tham chiếu đã khử trùng", () => {
+  it("tham chiếu đã khử trùng đi trước; câu trả lời của bridge là bằng chứng external_answer ở cuối (xoá [n] riêng của bridge)", () => {
     const ev = bridgeResultToEvidence(bridgeResult(), { ...CTX, sourceTitles: new Map([["s2", "Bốn buồng (cache)"]]) });
     expect(ev).toHaveLength(3);
 
-    const [answer, r1, r2] = ev;
+    const [r1, r2, answer] = ev;
     expect(answer).toMatchObject({
       provider: "notebooklm-bridge",
       kind: "external_answer",
@@ -97,15 +97,15 @@ describe("bridgeResultToEvidence", () => {
     const { evidence, contextText } = buildContext([...local, ...conn]);
     expect(evidence).toHaveLength(4);
     expect(contextText).toContain('[1] Nguồn: "Nguồn cục bộ"');
-    expect(contextText).toContain('[2] Nguồn: "Câu trả lời của NotebookLM · Giải phẫu"');
-    expect(contextText).toContain('[3] Nguồn: "Giải phẫu tim"');
+    expect(contextText).toContain('[2] Nguồn: "Giải phẫu tim"');
+    expect(contextText).toContain('[4] Nguồn: "Câu trả lời của NotebookLM · Giải phẫu"');
     expect(contextText).not.toContain("[1][2]");
-    const used = buildSourcesUsed(evidence, [1, 2, 3, 3]);
-    expect(used.map((u) => u.numbers)).toEqual([[1], [2], [3, 3]]);
-    expect(used[1].url).toBe("https://notebooklm.google.com/notebook/nb-ext-1");
+    const used = buildSourcesUsed(evidence, [1, 2, 3, 4, 4]);
+    expect(used.map((u) => u.numbers)).toEqual([[1], [2], [3], [4, 4]]);
+    expect(used[3].url).toBe("https://notebooklm.google.com/notebook/nb-ext-1");
     // hai kết nối khác nhau có thể trùng sourceId ngoài nhưng không bị gộp nguồn
     const other = bridgeResultToEvidence(bridgeResult(), { ...CTX, connectionId: "22222222-2222-4222-8222-222222222222" });
-    const merged = buildSourcesUsed([...conn, ...other], [2, 5]);
+    const merged = buildSourcesUsed([...conn, ...other], [1, 4]);
     expect(merged).toHaveLength(2);
   });
 });

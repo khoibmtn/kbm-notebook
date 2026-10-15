@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import type { SourceDto } from "@/lib/sources";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,10 @@ export type ComposerProps = {
   allowWeb: boolean;
   useWeb: boolean;
   onUseWebChange: (v: boolean) => void;
+  /** Kết nối ngoài dùng được (của mình hoặc đã chia sẻ). Bỏ trống/undefined = chưa tải. */
+  connections?: ConnectionDto[];
+  selectedConnectionIds?: string[];
+  onToggleConnection?: (id: string) => void;
   models: string[];
   model: string | null;
   onModelChange: (m: string) => void;
@@ -46,6 +51,9 @@ export function Composer({
   allowWeb,
   useWeb,
   onUseWebChange,
+  connections = [],
+  selectedConnectionIds = [],
+  onToggleConnection,
   models,
   model,
   onModelChange,
@@ -84,7 +92,11 @@ export function Composer({
     if (!ok) setValue(text);
   }
 
-  const scopeLabel = t("chat.scope.count", { count: selectedReady.length });
+  const usableConnections = connections.filter((c) => c.usable);
+  const selectedConnections = usableConnections.filter((c) => c.supportsChat && selectedConnectionIds.includes(c.id));
+  const scopeLabel =
+    t("chat.scope.count", { count: selectedReady.length }) +
+    (selectedConnections.length > 0 ? ` ${t("connectors.scope.count", { count: selectedConnections.length })}` : "");
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
@@ -151,12 +163,48 @@ export function Composer({
                     <Switch checked={useWeb} onCheckedChange={onUseWebChange} aria-label={t("chat.scope.web")} data-testid="web-toggle" />
                   </label>
                 )}
-                <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground opacity-70" aria-disabled>
-                  <span className="flex items-center gap-2">
-                    <Plug className="size-4" aria-hidden />
+                <div className="space-y-1" data-testid="scope-connections">
+                  <p className="flex items-center gap-2 text-sm">
+                    <Plug className="size-4 text-muted-foreground" aria-hidden />
                     {t("chat.scope.connections")}
-                  </span>
-                  <span className="text-xs">{t("chat.scope.connectionsHint")}</span>
+                  </p>
+                  {usableConnections.length === 0 ? (
+                    <p className="rounded-md bg-muted/60 p-2 text-xs text-muted-foreground" data-testid="scope-connections-empty">
+                      {t("connectors.scope.empty")}
+                    </p>
+                  ) : (
+                    <ul className="max-h-40 space-y-0.5 overflow-y-auto" aria-label={t("chat.scope.connections")}>
+                      {usableConnections.map((c) => (
+                        <li key={c.id}>
+                          <label
+                            className={cn("flex items-start gap-2 rounded-md px-1.5 py-1.5 text-sm", c.supportsChat ? "cursor-pointer hover:bg-accent" : "cursor-not-allowed opacity-60")}
+                            title={c.supportsChat ? undefined : t("connectors.scope.noChat")}
+                          >
+                            <Checkbox
+                              className="mt-0.5"
+                              checked={c.supportsChat && selectedConnectionIds.includes(c.id)}
+                              disabled={!c.supportsChat}
+                              onCheckedChange={() => onToggleConnection?.(c.id)}
+                              aria-label={c.label}
+                              data-testid="scope-connection"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1.5">
+                                <span
+                                  className={cn("size-1.5 shrink-0 rounded-full", c.status === "ready" ? "bg-emerald-500" : c.status === "error" ? "bg-destructive" : "bg-muted-foreground/50")}
+                                  aria-label={t(`connectors.status.${c.status}`)}
+                                />
+                                <span className="truncate">{c.label}</span>
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {c.supportsChat ? (c.provider === "notebooklm-bridge" ? "NotebookLM Bridge" : "Enterprise") : t("connectors.scope.noChat")}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </PopoverContent>

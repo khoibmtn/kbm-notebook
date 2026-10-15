@@ -49,6 +49,11 @@ function readBody(req: http.IncomingMessage): Promise<Buffer> {
   });
 }
 
+/** Dạng JSON công khai của nguồn (không có `fulltext`). */
+function publicSource(s: FakeSource) {
+  return { id: s.id, title: s.title, kind: s.kind, status: s.status, url: s.url };
+}
+
 function send(res: http.ServerResponse, status: number, body: unknown) {
   const data = JSON.stringify(body);
   res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) });
@@ -142,11 +147,11 @@ export async function startFakeBridge(opts: { port?: number } = {}): Promise<Fak
           source_count: nb.sources.length,
           updated_at: null,
           created_at: null,
-          sources: nb.sources.map(({ fulltext: _f, ...s }) => s),
+          sources: nb.sources.map(publicSource),
         });
       }
       if (req.method === "GET" && rest === "sources") {
-        return send(res, 200, nb.sources.map(({ fulltext: _f, ...s }) => s));
+        return send(res, 200, nb.sources.map(publicSource));
       }
       if (req.method === "POST" && rest === "sources") {
         const id = `${nb.id}-s${++seq}`;
@@ -162,8 +167,7 @@ export async function startFakeBridge(opts: { port?: number } = {}): Promise<Fak
           else return err(res, 422, "invalid_request", "type must be text or url");
         }
         nb.sources.push(src);
-        const { fulltext: _f, ...out } = src;
-        return send(res, 201, out);
+        return send(res, 201, publicSource(src));
       }
       const ft = /^sources\/([^/]+)\/fulltext$/.exec(rest);
       if (req.method === "GET" && ft) {

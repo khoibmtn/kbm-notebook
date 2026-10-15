@@ -50,7 +50,7 @@ export const chatEn = {
   "chat.scope.connections": "External connections",
   "chat.scope.connectionsHint": "Not available yet",
   "chat.scope.webNotAllowed": "Web search is not enabled for this notebook (Notebook settings), so only the selected sources were used.",
-  "chat.scope.connectionsUnavailable": "External connections are not available yet and were not used for this question.",
+  "chat.scope.connectionsUnavailable": "None of the selected external connections can answer questions (missing, or Enterprise which has no chat), so only the selected sources were used.",
 
   "chat.insufficient":
     "There is not enough evidence in the selected sources to answer confidently. Select more sources, add relevant documents or ask a more specific question.",

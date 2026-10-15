@@ -1,8 +1,9 @@
 "use client";
-import { ExternalLink, Globe } from "lucide-react";
+import { ExternalLink, Globe, Plug } from "lucide-react";
 import { Fragment, memo, useMemo, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { findCitations } from "@/lib/citations";
 import type { Evidence } from "@/lib/chat";
@@ -72,6 +73,10 @@ export function evidenceLocatorLabel(ev: Evidence, t: ReturnType<typeof useT>): 
   const parts: string[] = [];
   if (ev.locator.page != null) parts.push(t("chat.locator.page", { n: ev.locator.page }));
   if (ev.locator.slide != null) parts.push(t("chat.locator.slide", { n: ev.locator.slide }));
+  if (ev.provider === "notebooklm-bridge" || ev.provider === "notebooklm-enterprise") {
+    // Vị trí trong nguồn ngoài chỉ là offset ký tự → hiển thị nhãn thay vì "mục NotebookLM".
+    return ev.kind === "external_answer" ? t("connectors.citation.answerShort") : "NotebookLM";
+  }
   if (ev.locator.section) parts.push(t("chat.locator.section", { name: ev.locator.section }));
   if (ev.provider === "web" && ev.locator.url) {
     try {
@@ -92,6 +97,9 @@ export type CitationChipProps = {
 /** Nút trích dẫn dạng pill `[n]`: hover → tên nguồn, vị trí, trích đoạn 200 ký tự; bấm → mở nguồn (hoặc URL với web). */
 export function CitationChip({ n, evidence, onOpen }: CitationChipProps) {
   const t = useT();
+  if (evidence.provider === "notebooklm-bridge" || evidence.provider === "notebooklm-enterprise") {
+    return <ExternalCitationChip n={n} evidence={evidence} />;
+  }
   const where = evidenceLocatorLabel(evidence, t);
   const isWeb = evidence.provider === "web";
   return (
@@ -124,6 +132,54 @@ export function CitationChip({ n, evidence, onOpen }: CitationChipProps) {
         </div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Chip cho bằng chứng từ kết nối ngoài (NotebookLM): không có trình xem cục bộ → bấm mở popover nhỏ với trích đoạn,
+ * tên nguồn ngoài và liên kết mở notebook trên NotebookLM.
+ */
+function ExternalCitationChip({ n, evidence }: { n: number; evidence: Evidence }) {
+  const t = useT();
+  const isAnswer = evidence.kind === "external_answer";
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-testid="citation-chip"
+          data-citation={n}
+          data-provider={evidence.provider}
+          aria-label={t("chat.citation.aria", { n, title: evidence.sourceTitle })}
+          className="mx-0.5 inline-flex h-[18px] min-w-[22px] -translate-y-px cursor-pointer items-center justify-center rounded-full bg-violet-500/15 px-1.5 align-baseline text-[11px] font-medium leading-none text-violet-700 transition-colors hover:bg-violet-600 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600 dark:text-violet-300"
+        >
+          [{n}]
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-80 max-w-[90vw] space-y-2 p-3 text-left" data-testid="external-citation-popover">
+        <div className="flex items-start gap-1.5 text-xs font-semibold">
+          <Plug className="mt-0.5 size-3 shrink-0 text-violet-600" aria-hidden />
+          <span className="break-words" data-testid="external-citation-title">
+            {evidence.sourceTitle}
+          </span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">{isAnswer ? t("connectors.citation.answer") : t("connectors.citation.external")}</p>
+        <blockquote className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-violet-400/60 pl-2 text-xs leading-snug" data-testid="external-citation-text">
+          {evidence.text}
+        </blockquote>
+        {evidence.externalUrl && (
+          <a
+            href={evidence.externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-2 hover:opacity-80"
+            data-testid="external-citation-link"
+          >
+            <ExternalLink className="size-3" aria-hidden /> {t("connectors.citation.open")}
+          </a>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 

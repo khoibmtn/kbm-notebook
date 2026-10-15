@@ -48,7 +48,7 @@ export const chatVi = {
   "chat.scope.connections": "Kết nối ngoài",
   "chat.scope.connectionsHint": "Chưa khả dụng",
   "chat.scope.webNotAllowed": "Sổ tay này chưa cho phép tìm trên web (Cài đặt sổ tay) nên câu hỏi chỉ dùng các nguồn đã chọn.",
-  "chat.scope.connectionsUnavailable": "Kết nối ngoài chưa khả dụng nên chưa được dùng cho câu hỏi này.",
+  "chat.scope.connectionsUnavailable": "Không có kết nối ngoài nào dùng được để hỏi đáp (kết nối không tồn tại hoặc loại Enterprise không có chat) nên câu hỏi chỉ dùng các nguồn đã chọn.",
 
   "chat.insufficient":
     "Không đủ bằng chứng trong các nguồn đã chọn để trả lời chắc chắn. Hãy chọn thêm nguồn, thêm tài liệu liên quan hoặc đặt lại câu hỏi cụ thể hơn.",

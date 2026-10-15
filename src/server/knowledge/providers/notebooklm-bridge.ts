@@ -21,28 +21,13 @@ const posOrUndefined = (n: number | null): number | undefined => (typeof n === "
 
 /**
  * `ask` của Bridge → `Evidence[]`:
- * 1) một bằng chứng `external_answer` = câu trả lời tổng hợp của NotebookLM (đã xoá dấu `[n]` riêng của bridge để không lẫn số trích dẫn của KBM);
- * 2) mỗi `references[]` (khử trùng lặp) → `chunk` với `sourceId` = ID nguồn ngoài, `locator {startChar, endChar, section:'NotebookLM'}`, `text = cited_text`.
+ * 1) mỗi `references[]` (khử trùng lặp) → `chunk` với `sourceId` = ID nguồn ngoài, `locator {startChar, endChar, section:'NotebookLM'}`, `text = cited_text`;
+ * 2) thêm một bằng chứng `external_answer` ở CUỐI = câu trả lời tổng hợp của NotebookLM (đã xoá dấu `[n]` riêng của bridge để không lẫn số trích dẫn của KBM).
  * Điểm giảm dần theo thứ tự (không so sánh được với điểm RRF của kho cục bộ — bằng chứng kết nối luôn được nối sau kho cục bộ).
  */
 export function bridgeResultToEvidence(result: BridgeAskResult, ctx: BridgeConnectionContext): Evidence[] {
   const externalUrl = externalNotebookUrl("notebooklm-bridge", ctx.externalId) ?? undefined;
   const out: Evidence[] = [];
-  const answer = stripBridgeMarkers(result.answer);
-  if (answer) {
-    out.push({
-      id: `nlm:${ctx.connectionId}:answer`,
-      provider: "notebooklm-bridge",
-      kind: "external_answer",
-      connectionId: ctx.connectionId,
-      externalUrl,
-      sourceId: null,
-      sourceTitle: `Câu trả lời của NotebookLM · ${ctx.label}`,
-      locator: { section: SECTION },
-      text: answer,
-      score: 1 / 60,
-    });
-  }
   const seen = new Set<string>();
   let rank = 0;
   for (const ref of result.references) {
@@ -65,6 +50,21 @@ export function bridgeResultToEvidence(result: BridgeAskResult, ctx: BridgeConne
       score: 1 / (60 + rank + 2),
     });
     rank++;
+  }
+  const answer = stripBridgeMarkers(result.answer);
+  if (answer) {
+    out.push({
+      id: `nlm:${ctx.connectionId}:answer`,
+      provider: "notebooklm-bridge",
+      kind: "external_answer",
+      connectionId: ctx.connectionId,
+      externalUrl,
+      sourceId: null,
+      sourceTitle: `Câu trả lời của NotebookLM · ${ctx.label}`,
+      locator: { section: SECTION },
+      text: answer,
+      score: 1 / (60 + rank + 2),
+    });
   }
   return out;
 }

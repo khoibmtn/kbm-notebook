@@ -1,5 +1,6 @@
 "use client";
 import { AlertCircle, Eye, Loader2, Lock, MoreHorizontal, Pencil, RefreshCw, Trash2, Unlock } from "lucide-react";
+import { PushMenuItems } from "@/components/connectors/push-menu";
 import { SourceTypeIcon } from "@/components/sources/source-icon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import type { TFunction } from "@/lib/i18n";
 import type { SourceDto } from "@/lib/sources";
@@ -22,6 +24,8 @@ export type SourceCardActions = {
   onToggleVisibility: (s: SourceDto) => void;
   onReprocess: (s: SourceDto) => void;
   onDelete: (s: SourceDto) => void;
+  /** "Đẩy nguồn sang NotebookLM": đích do `pushTargets` quyết định. */
+  onPush?: (s: SourceDto, connection: ConnectionDto) => void;
 };
 
 function compactNumber(n: number): string {
@@ -76,9 +80,11 @@ type Props = {
   actions: SourceCardActions;
   /** Người dùng có quyền chỉnh sửa sổ tay (editor+)? */
   canEdit: boolean;
+  /** Kết nối NotebookLM có thể nhận nguồn này (đã lọc theo loại nguồn). Bỏ trống = không hiện mục đẩy. */
+  pushTargets?: ConnectionDto[];
 };
 
-export function SourceCard({ source, selected, onSelectedChange, actions, canEdit }: Props) {
+export function SourceCard({ source, selected, onSelectedChange, actions, canEdit, pushTargets }: Props) {
   const t = useT();
   const busy = source.status === "pending" || source.status === "processing";
   const selectable = source.status === "ready";
@@ -148,6 +154,14 @@ export function SourceCard({ source, selected, onSelectedChange, actions, canEdi
               <DropdownMenuItem disabled={busy || source.kind === "youtube"} onSelect={() => actions.onReprocess(source)}>
                 <RefreshCw /> {t("sources.menu.reprocess")}
               </DropdownMenuItem>
+              {pushTargets && actions.onPush && (
+                <PushMenuItems
+                  connections={pushTargets}
+                  label={t("connectors.push.source")}
+                  onPush={(c) => actions.onPush?.(source, c)}
+                  testId="source-push"
+                />
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => actions.onDelete(source)}>
                 <Trash2 /> {t("sources.menu.delete")}

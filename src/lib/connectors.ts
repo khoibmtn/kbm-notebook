@@ -141,3 +141,22 @@ export function stripBridgeMarkers(text: string): string {
     .replace(/[ \t]+\n/g, "\n")
     .trim();
 }
+
+/**
+ * Gợi ý phía client: URL có vẻ trỏ tới localhost/mạng nội bộ (để hiện cảnh báo + ô đồng ý). Máy chủ mới là nơi quyết định thật
+ * (kiểm tra cả DNS lúc kết nối).
+ */
+export function looksLikePrivateHost(raw: string): boolean {
+  let host: string;
+  try {
+    host = new URL(raw.trim()).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host.startsWith("[") || host.includes(":")) return true; // IPv6 literal: coi là cần cân nhắc
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    const [a, b] = host.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+  }
+  return !host.includes(".") || /\.(local|internal|lan|localdomain|home\.arpa)$/.test(host);
+}

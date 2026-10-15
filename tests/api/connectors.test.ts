@@ -399,10 +399,10 @@ describe("hỏi đáp với connectionIds", () => {
     const ev = body.evidence;
     expect(ev.map((e) => e.provider)).toEqual(["local", "notebooklm-bridge", "notebooklm-bridge", "notebooklm-bridge"]);
     expect(ev[0].sourceId).toBe(local.id);
-    expect(ev[1]).toMatchObject({ kind: "external_answer", sourceId: null, connectionId: connection.id, externalUrl: "https://notebooklm.google.com/notebook/ext-1" });
-    expect(ev[1].text).toBe("Lục lạp là nơi diễn ra quang hợp."); // dấu [1][2] của bridge đã bị xoá
-    expect(ev[2]).toMatchObject({ kind: "chunk", sourceId: "ext-1-a", sourceTitle: "Giải phẫu tim", locator: { startChar: 12, endChar: 53, section: "NotebookLM" } });
-    expect(ev[3]).toMatchObject({ sourceId: "ext-1-b", sourceTitle: "Hệ tuần hoàn" });
+    expect(ev[1]).toMatchObject({ kind: "chunk", sourceId: "ext-1-a", sourceTitle: "Giải phẫu tim", locator: { startChar: 12, endChar: 53, section: "NotebookLM" } });
+    expect(ev[2]).toMatchObject({ kind: "chunk", sourceId: "ext-1-b", sourceTitle: "Hệ tuần hoàn" });
+    expect(ev[3]).toMatchObject({ kind: "external_answer", sourceId: null, connectionId: connection.id, externalUrl: "https://notebooklm.google.com/notebook/ext-1" });
+    expect(ev[3].text).toBe("Lục lạp là nơi diễn ra quang hợp."); // dấu [1][2] của bridge đã bị xoá
 
     // câu hỏi đúng được gửi tới bridge
     const askCall = bridge.calls.find((x) => x.path === "/notebooks/ext-1/ask");
@@ -417,8 +417,8 @@ describe("hỏi đáp với connectionIds", () => {
 
     // prompt có câu trả lời & trích đoạn của NotebookLM, đánh số liên tục, không lẫn [1][2] của bridge
     const prompt = String(canned.calls.at(-1)!.messages.at(-1)!.content);
-    expect(prompt).toContain('[2] Nguồn: "Câu trả lời của NotebookLM · Giải phẫu ngoài"');
-    expect(prompt).toContain('[3] Nguồn: "Giải phẫu tim"');
+    expect(prompt).toContain('[4] Nguồn: "Câu trả lời của NotebookLM · Giải phẫu ngoài"');
+    expect(prompt).toContain('[2] Nguồn: "Giải phẫu tim"');
     expect(prompt).toContain("Quang hợp xảy ra ở lục lạp, nhờ diệp lục.");
 
     // trạng thái kết nối vẫn 'ready' sau lần gọi thật thành công
@@ -432,7 +432,7 @@ describe("hỏi đáp với connectionIds", () => {
     canned.answer = "Bốn buồng [1].";
     const c = await conv(owner, notebook.id);
     const { body } = await askWith(owner, notebook.id, c.id, { sourceIds: [], connectionIds: [connection.id] }, "Tim có mấy buồng?");
-    expect(body.evidence.map((e) => e.kind)).toEqual(["external_answer", "chunk"]);
+    expect(body.evidence.map((e) => e.kind)).toEqual(["chunk", "external_answer"]);
     expect(body.message.insufficientEvidence).toBe(false);
     expect(body.message.content).toBe("Bốn buồng [1].");
   });
