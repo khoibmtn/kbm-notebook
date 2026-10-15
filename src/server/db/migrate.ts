@@ -3,10 +3,11 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import path from "node:path";
+import { poolConfigFromUrl } from "./connection";
 
 /** Chạy migration (dùng cho `pnpm db:migrate` và global setup của vitest). Không import server-only. */
 export async function runMigrations(connectionString: string): Promise<void> {
-  const pool = new Pool({ connectionString, max: 1 });
+  const pool = new Pool(poolConfigFromUrl(connectionString, { max: 1 }));
   try {
     await pool.query("CREATE EXTENSION IF NOT EXISTS vector");
     await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
