@@ -6,87 +6,15 @@ import https from "node:https";
 import { isIP } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import type { Readable } from "node:stream";
+import { isPrivateIp } from "@/server/net/ip-policy";
 import { IngestError } from "./errors";
 
 /* -------------------------------------------------------------------------- */
 /* Kiểm tra địa chỉ IP riêng / loopback                                        */
 /* -------------------------------------------------------------------------- */
 
-function ipv4ToInt(ip: string): number {
-  return ip.split(".").reduce((acc, p) => (acc << 8) + Number(p), 0) >>> 0;
-}
-
-function inV4(ip: number, base: string, bits: number): boolean {
-  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-  return (ip & mask) >>> 0 === (ipv4ToInt(base) & mask) >>> 0;
-}
-
-const BLOCKED_V4: [string, number][] = [
-  ["0.0.0.0", 8], // "this" network
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10], // CGNAT
-  ["127.0.0.0", 8], // loopback
-  ["169.254.0.0", 16], // link-local, metadata cloud
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4], // multicast
-  ["240.0.0.0", 4], // reserved + broadcast
-];
-
-/** Mở rộng IPv6 về 8 nhóm 16-bit (hỗ trợ `::` và đuôi IPv4). */
-function expandV6(ip: string): number[] | null {
-  let addr = ip.toLowerCase();
-  const zone = addr.indexOf("%");
-  if (zone >= 0) addr = addr.slice(0, zone);
-  const v4tail = addr.match(/(\d+\.\d+\.\d+\.\d+)$/);
-  if (v4tail) {
-    const n = ipv4ToInt(v4tail[1]);
-    addr = addr.slice(0, addr.length - v4tail[1].length) + ((n >>> 16) & 0xffff).toString(16) + ":" + (n & 0xffff).toString(16);
-  }
-  const halves = addr.split("::");
-  if (halves.length > 2) return null;
-  const head = halves[0] ? halves[0].split(":") : [];
-  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-  const missing = 8 - head.length - tail.length;
-  if (halves.length === 1 ? head.length !== 8 : missing < 0) return null;
-  const groups = [...head, ...Array(halves.length === 2 ? missing : 0).fill("0"), ...tail];
-  const nums = groups.map((g) => parseInt(g, 16));
-  return nums.length === 8 && nums.every((n) => Number.isInteger(n) && n >= 0 && n <= 0xffff) ? nums : null;
-}
-
-/** true nếu IP thuộc dải không được phép truy cập từ server (private, loopback, link-local, multicast…). */
-export function isPrivateIp(ip: string): boolean {
-  const kind = isIP(ip);
-  if (kind === 4) {
-    const n = ipv4ToInt(ip);
-    return BLOCKED_V4.some(([base, bits]) => inV4(n, base, bits));
-  }
-  if (kind === 6) {
-    const g = expandV6(ip);
-    if (!g) return true;
-    if (g.every((x) => x === 0)) return true; // ::
-    if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true; // ::1
-    // IPv4-mapped ::ffff:a.b.c.d và IPv4-compatible ::a.b.c.d
-    if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
-      return isPrivateIp(`${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`);
-    }
-    // NAT64 64:ff9b::/96
-    if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
-      return isPrivateIp(`${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`);
-    }
-    if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
-    if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
-    if ((g[0] & 0xff00) === 0xff00) return true; // multicast
-    if (g[0] === 0x2001 && g[1] === 0x0db8) return true; // tài liệu
-    return false;
-  }
-  return true; // không phải IP hợp lệ → coi như chặn
-}
+// Chính sách IP dùng chung với connectors/http.ts: xem src/server/net/ip-policy.ts
+export { isPrivateIp };
 
 const BLOCKED_HOST_RE = /(^|\.)(localhost|local|internal|localdomain|home\.arpa)$/i;
 

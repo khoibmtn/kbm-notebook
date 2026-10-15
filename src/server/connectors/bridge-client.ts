@@ -119,26 +119,54 @@ const toSource = (s: z.infer<typeof sourceSchema>): BridgeSource => ({
 /** Chuỗi `/notebooks/{id}/...` an toàn: id đi qua `encodeURIComponent`. */
 const nb = (id: string) => `/notebooks/${encodeURIComponent(id)}`;
 
-/** Ánh xạ mã lỗi/HTTP của bridge sang thông báo người dùng đọc được. */
+/** Rút gọn + làm sạch văn bản lấy từ máy chủ ngoài trước khi cho người dùng thấy (bỏ ký tự điều khiển/HTML, cắt độ dài). */
+export function sanitizeUpstreamText(value: string | null | undefined, max = 120): string | null {
+  if (!value) return null;
+  // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển
+  const clean = value.replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return null;
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+/** Thông báo cố định (do KBM viết) cho các mã lỗi mà sidecar chính thức trả về. KHÔNG phản chiếu nội dung do máy chủ ngoài gửi. */
+const BRIDGE_ERROR_MESSAGES: Record<string, string> = {
+  not_authenticated: "Bridge chưa đăng nhập Google. Chạy `notebooklm login` trên máy chạy bridge.",
+  client_unavailable: "Bridge chưa kết nối được NotebookLM. Chạy `notebooklm login` trên máy chạy bridge.",
+  notebook_not_found: "Bridge không tìm thấy notebook này.",
+  source_not_found: "Bridge không tìm thấy nguồn này.",
+  artifact_not_found: "Bridge không tìm thấy artifact này.",
+  note_not_found: "Bridge không tìm thấy ghi chú này.",
+  rate_limited: "NotebookLM đang giới hạn tần suất. Thử lại sau ít phút.",
+  timeout: "NotebookLM phản hồi quá chậm. Thử lại sau.",
+  invalid_request: "Bridge từ chối yêu cầu vì dữ liệu không hợp lệ.",
+  unsupported_media_type: "Bridge không hỗ trợ loại tệp này.",
+  notebook_limit_reached: "Đã đạt giới hạn số notebook của tài khoản NotebookLM.",
+  source_processing_failed: "NotebookLM không xử lý được nguồn này.",
+  source_add_failed: "NotebookLM không thêm được nguồn này.",
+  download_failed: "Bridge không tải được tệp từ NotebookLM.",
+  artifact_not_ready: "Artifact trên NotebookLM chưa sẵn sàng.",
+  feature_unavailable: "Tính năng này chưa khả dụng trên tài khoản NotebookLM.",
+  misconfigured: "Bridge cấu hình chưa đúng — xem log của bridge.",
+};
+
+/**
+ * Ánh xạ mã lỗi/HTTP của bridge sang thông báo người dùng đọc được.
+ * Nội dung `message` do máy chủ ở URL bridge gửi KHÔNG được chuyển tiếp (URL do người dùng nhập có thể là dịch vụ bất kỳ —
+ * nếu phản chiếu sẽ thành kênh đọc dữ liệu nội bộ); chỉ dùng mã lỗi đã biết + HTTP status.
+ */
 export function describeBridgeFailure(status: number, body: Buffer): { code: string | null; message: string } {
   let code: string | null = null;
-  let message = "";
   try {
     const parsed = errorBodySchema.safeParse(JSON.parse(body.toString("utf8")));
-    if (parsed.success) {
-      code = parsed.data.error?.code ?? null;
-      message = parsed.data.error?.message ?? "";
-    }
+    if (parsed.success && parsed.data.error?.code && /^[a-z0-9_]{1,40}$/.test(parsed.data.error.code)) code = parsed.data.error.code;
   } catch {
     /* không phải JSON */
   }
   if (status === 401 || code === "unauthorized") return { code, message: "Bridge từ chối token (401). Kiểm tra lại BRIDGE_TOKEN." };
-  if (code === "not_authenticated" || status === 503) {
-    return { code, message: message || "Bridge chưa đăng nhập Google. Chạy `notebooklm login` trên máy chạy bridge." };
-  }
-  if (code === "upstream_changed") return { code, message: `${message || "Giao thức NotebookLM đã đổi"} — cần nâng cấp notebooklm-py ở bridge.` };
-  if (message) return { code, message };
-  return { code, message: `Bridge trả về HTTP ${status}` };
+  if (code === "upstream_changed") return { code, message: "Giao thức NotebookLM đã đổi — cần nâng cấp notebooklm-py ở bridge." };
+  if (code && BRIDGE_ERROR_MESSAGES[code]) return { code, message: BRIDGE_ERROR_MESSAGES[code] };
+  if (status === 503) return { code, message: BRIDGE_ERROR_MESSAGES.not_authenticated };
+  return { code, message: `Bridge trả về HTTP ${status}${code ? ` (${code})` : ""}` };
 }
 
 export class BridgeClient {
@@ -194,11 +222,11 @@ export class BridgeClient {
     const res = await this.call("GET", "/health?refresh=true");
     const h = await this.json(healthSchema, res);
     return {
-      version: h.version ?? null,
-      notebooklmPyVersion: h.notebooklm_py_version ?? null,
+      version: sanitizeUpstreamText(h.version, 40),
+      notebooklmPyVersion: sanitizeUpstreamText(h.notebooklm_py_version, 40),
       authenticated: h.authenticated,
-      account: h.account ?? null,
-      detail: h.detail ?? null,
+      account: sanitizeUpstreamText(h.account, 120),
+      detail: sanitizeUpstreamText(h.detail, 160),
     };
   }
 

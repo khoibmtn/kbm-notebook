@@ -2,10 +2,10 @@ import "server-only";
 import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import http, { type IncomingHttpHeaders } from "node:http";
 import https from "node:https";
-import { BlockList, isIP } from "node:net";
+import { isIP } from "node:net";
 import { ApiError } from "@/server/api/errors";
 import { privateConnectorHostsAllowed } from "@/server/env";
-import { isPrivateIp } from "@/server/knowledge/ingest/ssrf";
+import { bareHost, isAlwaysBlockedIp, isPrivateHostName, isPrivateIp } from "@/server/net/ip-policy";
 
 /**
  * HTTP client dùng cho Bridge (và mọi URL do người dùng nhập).
@@ -18,27 +18,8 @@ import { isPrivateIp } from "@/server/knowledge/ingest/ssrf";
 export const CONNECTOR_DEFAULT_TIMEOUT_MS = 20_000;
 export const CONNECTOR_DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
-/** Dải luôn bị chặn, kể cả khi người dùng cho phép địa chỉ nội bộ. */
-const ALWAYS_BLOCKED = new BlockList();
-ALWAYS_BLOCKED.addSubnet("0.0.0.0", 8, "ipv4");
-ALWAYS_BLOCKED.addSubnet("169.254.0.0", 16, "ipv4");
-ALWAYS_BLOCKED.addSubnet("224.0.0.0", 4, "ipv4");
-ALWAYS_BLOCKED.addSubnet("240.0.0.0", 4, "ipv4");
-ALWAYS_BLOCKED.addSubnet("fe80::", 10, "ipv6");
-ALWAYS_BLOCKED.addSubnet("ff00::", 8, "ipv6");
-ALWAYS_BLOCKED.addAddress("::", "ipv6");
-
-export function isAlwaysBlockedIp(ip: string): boolean {
-  const kind = isIP(ip);
-  if (kind === 0) return true;
-  return ALWAYS_BLOCKED.check(ip, kind === 4 ? "ipv4" : "ipv6");
-}
-
-const PRIVATE_NAME_RE = /(^|\.)(localhost|local|internal|localdomain|home\.arpa|lan)$/i;
-
-function bareHost(hostname: string): string {
-  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-}
+// Chính sách IP dùng chung với ingest/ssrf.ts: xem src/server/net/ip-policy.ts
+export { isAlwaysBlockedIp };
 
 /**
  * URL này có trỏ tới địa chỉ nội bộ/riêng không? Chỉ xét phần chữ của host (IP literal, `localhost`, `*.local`…);
@@ -53,7 +34,7 @@ export function isPrivateHostUrl(raw: string): boolean {
   }
   const host = bareHost(url.hostname);
   if (isIP(host)) return isPrivateIp(host);
-  return PRIVATE_NAME_RE.test(host) || !host.includes(".");
+  return isPrivateHostName(host);
 }
 
 /**
@@ -76,11 +57,15 @@ export function assertConnectorUrl(raw: string, opts: { allowPrivateHosts: boole
   const host = bareHost(url.hostname);
   if (!host) throw new ApiError(400, "invalid_url", "URL không hợp lệ");
   if (isIP(host) && isAlwaysBlockedIp(host)) {
-    throw new ApiError(400, "blocked_url", "Không cho phép địa chỉ link-local / metadata / không hợp lệ");
+    throw new ApiError(400, "blocked_url", "Không cho phép địa chỉ link-local / metadata đám mây / dải dành riêng");
   }
   if (isPrivateHostUrl(url.toString())) {
     if (!privateConnectorHostsAllowed()) {
-      throw new ApiError(400, "private_host_not_allowed", "Máy chủ này không cho phép kết nối tới địa chỉ nội bộ/LAN (CONNECTORS_ALLOW_PRIVATE_HOSTS=false)");
+      throw new ApiError(
+        400,
+        "private_host_not_allowed",
+        "Máy chủ này không cho phép Bridge ở địa chỉ nội bộ/LAN/localhost. Quản trị viên máy chủ cần đặt CONNECTORS_ALLOW_PRIVATE_HOSTS=true, hoặc hãy đặt Bridge ở địa chỉ công khai (HTTPS)",
+      );
     }
     if (!opts.allowPrivateHosts) {
       throw new ApiError(

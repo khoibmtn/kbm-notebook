@@ -240,7 +240,7 @@ describe("kết nối notebook (Bridge)", () => {
     await saveBridge(owner);
     const missing = await createConn(owner, notebook.id, { ...body, externalId: "khong-co" });
     expect(missing.status).toBe(502);
-    expect((await json<Err>(missing)).error.message).toContain("khong-co");
+    expect((await json<Err>(missing)).error.message).toContain("không tìm thấy notebook");
     expect((await listConns(owner, notebook.id)).list).toHaveLength(0);
 
     expect((await createConn(owner, notebook.id, body)).status).toBe(201);
@@ -458,7 +458,7 @@ describe("hỏi đáp với connectionIds", () => {
     expect((await askWith(members.viewer, notebook.id, c.id, { sourceIds: [], connectionIds: [connection.id] })).res.status).toBe(403);
   });
 
-  it("kết nối lỗi: có bằng chứng khác → vẫn trả lời + báo connection_error; không có gì khác → 502 connector_error với lỗi thật", async () => {
+  it("kết nối lỗi: có bằng chứng khác → vẫn trả lời + báo connection_error; không có gì khác → 502 connector_error (mã lỗi + HTTP status, không phản chiếu nội dung thô)", async () => {
     const { owner, notebook, connection } = await connectedNotebook([]);
     const local = await withLocalSource(notebook.id, owner);
     bridge.askFailure = { status: 502, code: "upstream_error", message: "Google từ chối yêu cầu" };
@@ -468,16 +468,16 @@ describe("hỏi đáp với connectionIds", () => {
     const partial = await askWith(owner, notebook.id, c.id, { sourceIds: [local.id], connectionIds: [connection.id] });
     expect(partial.res.status).toBe(200);
     expect(partial.body.scopeAdjustments).toEqual(["connection_error"]);
-    expect(partial.body.scopeAdjustmentDetails![0]).toContain("Google từ chối yêu cầu");
+    expect(partial.body.scopeAdjustmentDetails![0]).toContain("Bridge trả về HTTP 502");
     expect(partial.body.evidence.every((e) => e.provider === "local")).toBe(true);
     const [row] = await db.select().from(notebookConnections).where(eq(notebookConnections.id, connection.id));
     expect(row).toMatchObject({ status: "error" });
-    expect(row.lastError).toContain("Google từ chối yêu cầu");
+    expect(row.lastError).toContain("Bridge trả về HTTP 502");
 
     const only = await askWith(owner, notebook.id, c.id, { sourceIds: [], connectionIds: [connection.id] });
     expect(only.res.status).toBe(502);
     expect(only.body.error).toMatchObject({ code: "connector_error" });
-    expect(only.body.error.message).toContain("Google từ chối yêu cầu");
+    expect(only.body.error.message).toContain("Bridge trả về HTTP 502");
   });
 
   it("id kết nối lạ → connections_unavailable (không lỗi); Enterprise không có chat → connections_unavailable", async () => {
@@ -551,7 +551,7 @@ describe("ghi ngược, đẩy nguồn và nhập nguồn", () => {
     expect(res.status).toBe(201);
     const out = await json<{ imported: { sourceId: string; title: string; externalSourceId: string }[]; failed: { externalSourceId: string; message: string }[] }>(res);
     expect(out.imported).toHaveLength(1);
-    expect(out.failed).toEqual([{ externalSourceId: "ext-1-zzz", message: expect.stringContaining("not found") }]);
+    expect(out.failed).toEqual([{ externalSourceId: "ext-1-zzz", message: expect.stringContaining("không tìm thấy nguồn") }]);
 
     const [src] = await db.select().from(sources).where(eq(sources.id, out.imported[0].sourceId));
     expect(src).toMatchObject({ kind: "text", title: "Giải phẫu tim", rawText: "Tim có bốn buồng: hai tâm nhĩ và hai tâm thất.", status: "pending" });

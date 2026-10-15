@@ -23,9 +23,10 @@ import {
   enterpriseUrls,
   resolveAccessToken,
 } from "@/server/connectors/enterprise-client";
-import { describeBridgeFailure, type BridgeAskResult } from "@/server/connectors/bridge-client";
+import { describeBridgeFailure, sanitizeUpstreamText, type BridgeAskResult } from "@/server/connectors/bridge-client";
 import { assertConnectorUrl, isAlwaysBlockedIp, isPrivateHostUrl } from "@/server/connectors/http";
 import { hasDriveScope, parseServiceAccountJson } from "@/server/connectors/settings";
+import { privateConnectorHostsAllowed, resetEnvCache } from "@/server/env";
 import { bridgeResultToEvidence, NotebookLmBridgeProvider } from "@/server/knowledge/providers/notebooklm-bridge";
 import { ENTERPRISE_NO_CHAT_MESSAGE, NotebookLmEnterpriseProvider } from "@/server/knowledge/providers/notebooklm-enterprise";
 import { externalNotebookUrl, stripBridgeMarkers } from "@/lib/connectors";
@@ -263,9 +264,77 @@ describe("kiểm tra URL của Bridge (SSRF có điều kiện)", () => {
   it("mô tả lỗi bridge: 401, chưa đăng nhập, upstream_changed", () => {
     const body = (code: string, message: string) => Buffer.from(JSON.stringify({ error: { code, message } }));
     expect(describeBridgeFailure(401, body("unauthorized", "x")).message).toContain("token");
-    expect(describeBridgeFailure(503, body("not_authenticated", "Chưa đăng nhập")).message).toBe("Chưa đăng nhập");
+    expect(describeBridgeFailure(503, body("not_authenticated", "Chưa đăng nhập")).message).toContain("notebooklm login");
     expect(describeBridgeFailure(502, body("upstream_changed", "Đổi giao thức")).message).toContain("notebooklm-py");
     expect(describeBridgeFailure(500, Buffer.from("html")).message).toBe("Bridge trả về HTTP 500");
+  });
+});
+
+describe("H-2 · SSRF qua Bridge URL", () => {
+  const withEnv = async (value: string | undefined, fn: () => void | Promise<void>) => {
+    const prev = process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS;
+    if (value === undefined) delete process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS;
+    else process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS = value;
+    resetEnvCache();
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined) delete process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS;
+      else process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS = prev;
+      resetEnvCache();
+    }
+  };
+
+  it("mặc định (không đặt biến) KHÔNG cho host nội bộ, kể cả khi người dùng tự bật công tắc; thông báo nói rõ cờ máy chủ", async () => {
+    await withEnv(undefined, () => {
+      expect(privateConnectorHostsAllowed()).toBe(false);
+      for (const url of ["http://127.0.0.1:8765", "http://10.0.0.5:8080/admin", "http://localhost:5432", "http://bridge:8765", "http://[::1]:8765"]) {
+        expect(() => assertConnectorUrl(url, { allowPrivateHosts: true })).toThrowError(/CONNECTORS_ALLOW_PRIVATE_HOSTS=true/);
+      }
+      expect(assertConnectorUrl("https://bridge.example.com", { allowPrivateHosts: false }).hostname).toBe("bridge.example.com");
+    });
+    await withEnv("true", () => expect(privateConnectorHostsAllowed()).toBe(true));
+    await withEnv("false", () => expect(privateConnectorHostsAllowed()).toBe(false));
+  });
+
+  it("các dải metadata luôn bị chặn kể cả khi admin bật host nội bộ", async () => {
+    await withEnv("true", () => {
+      for (const url of [
+        "http://169.254.169.254/",
+        "http://100.100.100.200/latest/meta-data", // Alibaba
+        "http://100.64.0.1/",
+        "http://192.0.0.192/", // Oracle
+        "http://[fd00:ec2::254]/", // AWS IMDS IPv6
+        "http://[::ffff:100.100.100.200]/",
+        "http://[64:ff9b::a9fe:a9fe]/", // NAT64 -> 169.254.169.254
+        "http://[2002:a9fe:a9fe::1]/", // 6to4 -> 169.254.169.254
+        "http://[2001::1]/", // Teredo
+        "http://198.18.0.1/",
+        "http://0.0.0.0/",
+        "http://2852039166/", // 169.254.169.254 dạng số thập phân
+      ]) {
+        expect(() => assertConnectorUrl(url, { allowPrivateHosts: true }), url).toThrowError(/link-local|metadata|dải dành riêng/);
+      }
+      expect(assertConnectorUrl("http://192.168.1.10:8765", { allowPrivateHosts: true }).port).toBe("8765");
+    });
+    expect(isAlwaysBlockedIp("100.127.255.255")).toBe(true);
+    expect(isAlwaysBlockedIp("fd00:ec2::254")).toBe(true);
+    expect(isAlwaysBlockedIp("fd12:3456::1")).toBe(false); // ULA thường vẫn là "private", không phải "always blocked"
+    expect(isAlwaysBlockedIp("10.0.0.1")).toBe(false);
+    expect(isAlwaysBlockedIp("8.8.8.8")).toBe(false);
+  });
+
+  it("không phản chiếu nội dung thô của máy chủ ngoài vào thông báo lỗi / health", () => {
+    const body = (code: string, message: string) => Buffer.from(JSON.stringify({ error: { code, message } }));
+    const leaked = describeBridgeFailure(500, body("internal_secret", "DB password=hunter2 at 10.0.0.9"));
+    expect(leaked.message).not.toContain("hunter2");
+    expect(leaked.message).toBe("Bridge trả về HTTP 500 (internal_secret)");
+    expect(describeBridgeFailure(500, body("Bad Code <script>", "x")).message).toBe("Bridge trả về HTTP 500");
+    expect(describeBridgeFailure(404, body("notebook_not_found", "Notebook nb-secret not found in /etc/passwd")).message).not.toContain("passwd");
+    expect(describeBridgeFailure(502, Buffer.from("<html>SECRET PAGE</html>")).message).toBe("Bridge trả về HTTP 502");
+    expect(sanitizeUpstreamText("  <b>login</b>\n\u0000thất bại  ")).toBe("login thất bại");
+    expect(sanitizeUpstreamText("x".repeat(500), 50)!.length).toBe(50);
+    expect(sanitizeUpstreamText("   ")).toBeNull();
   });
 });
 
