@@ -1,4 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+/** Không gọi Google thật: ghi lại tuỳ chọn khởi tạo để kiểm tra scope + credentials của service account. */
+const gauth = vi.hoisted(() => ({ ctor: [] as unknown[], token: "ya29.minted-token" as string | null }));
+vi.mock("google-auth-library", () => ({
+  GoogleAuth: class {
+    constructor(opts: unknown) {
+      gauth.ctor.push(opts);
+    }
+    async getAccessToken() {
+      return gauth.token;
+    }
+  },
+}));
 import { buildContext } from "@/server/ai/context";
 import { buildSourcesUsed } from "@/server/ai/citations";
 import type { NotebookConnection } from "@/server/db/schema";
@@ -168,6 +181,15 @@ describe("enterprise URL building", () => {
     expect(describeGoogleFailure(401, "{}")).toContain("hết hạn");
     expect(describeGoogleFailure(403, JSON.stringify({ error: { message: "Permission denied" } }))).toContain("Permission denied");
     expect(describeGoogleFailure(500, "not json")).toContain("HTTP 500");
+  });
+
+  it("service account: mint token bằng google-auth-library với scope cloud-platform; không có token → lỗi 502 rõ ràng", async () => {
+    const sa = { type: "service_account", client_email: "sa@p.iam.gserviceaccount.com", private_key: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n" };
+    expect(await resolveAccessToken({ type: "service_account", serviceAccountJson: JSON.stringify(sa) })).toBe("ya29.minted-token");
+    expect(gauth.ctor.at(-1)).toEqual({ credentials: sa, scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
+    gauth.token = null;
+    await expect(resolveAccessToken({ type: "service_account", serviceAccountJson: JSON.stringify(sa) })).rejects.toMatchObject({ status: 502, code: "connector_error" });
+    gauth.token = "ya29.minted-token";
   });
 
   it("access token dán tay được dùng nguyên; service account JSON sai → 400", async () => {

@@ -116,13 +116,7 @@ export function ConnectionCard({ connection: c, actions, canEdit }: { connection
             )}
             {c.isMine && canEdit && (
               <>
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    void run(() => actions.onToggleShared(c));
-                  }}
-                  data-testid="connection-share"
-                >
+                <DropdownMenuItem onSelect={() => void run(() => actions.onToggleShared(c))} data-testid="connection-share">
                   <Users /> {c.sharedWithMembers ? t("connectors.menu.shareOff") : t("connectors.menu.shareOn")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void run(() => actions.onRefreshCredentials(c))}>

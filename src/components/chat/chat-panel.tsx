@@ -171,7 +171,10 @@ export function ChatPanel() {
     async (m: ChatMessageDto, connection: ConnectionDto) => {
       const idx = messages.findIndex((x) => x.id === m.id);
       const question = [...messages.slice(0, Math.max(idx, 0))].reverse().find((x) => x.role === "user")?.content ?? "";
-      const sourcesLines = (m.sourcesUsed ?? []).map((s) => `- ${s.title}${s.locators.length ? ` — ${s.locators.join(", ")}` : ""}`);
+      const sourcesLines = (m.sourcesUsed ?? []).map((s) => {
+        const external = s.provider === "notebooklm-bridge" || s.provider === "notebooklm-enterprise";
+        return `- ${s.title}${!external && s.locators.length ? ` — ${s.locators.join(", ")}` : ""}`;
+      });
       const content = `${stripCitations(m.content).trim()}${sourcesLines.length ? `\n\n${t("chat.pushNote.sources")}\n${sourcesLines.join("\n")}` : ""}`;
       await pushNote(connection, question.trim().slice(0, 200) || t("chat.pushNote.defaultTitle"), content);
     },

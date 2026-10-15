@@ -226,3 +226,16 @@ Không đổi schema (dùng nguyên các bảng `channels`, `channel_members`, `
 - Export tái dùng: `MarkdownWithCitations` (`components/chat/markdown-with-citations.tsx`: GFM + chip `[n]` có tooltip, `evidence[]`, `onCitationOpen`, `streaming`), `CitationChip`, `remarkCitations`, `markdownComponents`; `useChat`, `askStream`/`readAskStream` (`lib/chat-stream.ts`); `noteExtensions()` (Tiptap + `@tiptap/markdown`) và `normalizeEditorMarkdown` (bỏ escape `\[1\]`).
 - i18n của mô-đun nằm ở `src/i18n/modules/chat.{vi,en}.ts` (trải vào `vi`/`en`).
 - Cài đặt → Prompt có thêm mục "Trò chuyện (Chat AI)" (`prompts.chat`: `system` thay prompt mặc định; `user` là mẫu có `{{question}}`); Cài đặt sổ tay giải thích chỉ dẫn hệ thống được ghép *sau* prompt chat.
+
+## 10. Ghi chú triển khai P5 — Kết nối ngoài
+
+Chi tiết đầy đủ, API và mô hình bảo mật: [docs/07-ket-noi.md](07-ket-noi.md). Tóm tắt các điểm khác/bổ sung so với thiết kế ban đầu:
+
+- **Schema**: thêm cột `user_settings.connectors_enc text` (migration `0001_connectors_enc.sql`) giữ JSON mã hoá cài đặt Bridge/Enterprise của người dùng. Các bảng `notebook_connections` / `connection_sources` dùng nguyên như thiết kế; credential được **chụp** vào `credential_enc` khi tạo kết nối.
+- **`Evidence`** (providers/types.ts) có thêm `kind?: 'chunk' | 'external_answer' | 'web'`, `connectionId?`, `externalUrl?`. `buildSourcesUsed` khoá nguồn ngoài theo `connectionId` để hai kết nối không bị gộp.
+- **Provider**: `providers/notebooklm-bridge.ts` (`bridgeResultToEvidence` thuần + `NotebookLmBridgeProvider`, mỗi kết nối một instance) và `providers/notebooklm-enterprise.ts` (`retrieve()` ném `501 not_supported`; chỉ có helper liệt kê/tạo/thêm nguồn/chia sẻ). Client HTTP ở `src/server/connectors/{http,bridge-client,enterprise-client,drive}.ts`; nghiệp vụ kết nối ở `connections.ts`; cài đặt người dùng ở `settings.ts`.
+- **`prepareAsk`** (`chat/ask.ts`): `scope.connectionIds` → `resolveChatConnections` (403 nếu của người khác chưa chia sẻ; id lạ/Enterprise → bỏ qua + `connections_unavailable`) → truy hồi song song cục bộ + kết nối + web; thứ tự bằng chứng **cục bộ → kết nối → web**. Truy hồi chạy **trước** khi lưu tin nhắn người dùng (lỗi kết nối không để lại tin nhắn mồ côi). `ScopeAdjustReason` có thêm `connection_error` (sự kiện `scope_adjusted` kèm `detail`; `AskResult.scopeAdjustmentDetails`).
+- **SSRF của Bridge**: `connectorHttp` cho phép host nội bộ chỉ khi người dùng bật công tắc *và* máy chủ không đặt `CONNECTORS_ALLOW_PRIVATE_HOSTS=false`; luôn chặn link-local/metadata; không theo redirect.
+- **Ingest**: `kind='drive'` được pipeline xử lý như tệp (`extractForSource`); `createSourceFromFile/Text` nhận thêm `kind`/`metadata`.
+- **UI**: `src/components/connectors/*` (thẻ kết nối, hộp chọn notebook, nhập nguồn, tab Drive, menu "Lưu vào NotebookLM"), `components/settings/connectors-settings.tsx`; i18n `src/i18n/modules/connectors.{vi,en}.ts`.
+- **Sidecar**: thêm `GET /notebooks/{id}/sources/{sourceId}/fulltext` (+ pytest).

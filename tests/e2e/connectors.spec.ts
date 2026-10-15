@@ -136,11 +136,11 @@ test("kết nối notebook NotebookLM → hỏi đáp với kết nối → chip
   await input.press("Enter");
   const answer = chat.getByTestId("assistant-message");
   await expect(answer).toBeVisible({ timeout: 30_000 });
-  expect(bridge.calls.some((c) => c.path === "/notebooks/ext-1/ask")).toBe(true);
 
   // Chip [1] trỏ nguồn ngoài: popover có trích đoạn, tên nguồn ngoài và liên kết mở NotebookLM
   const chip = answer.getByTestId("citation-chip").first();
   await expect(chip).toHaveAttribute("data-provider", "notebooklm-bridge", { timeout: 30_000 });
+  expect(bridge.calls.some((c) => c.path === "/notebooks/ext-1/ask")).toBe(true);
   await chip.click();
   const pop = page.getByTestId("external-citation-popover");
   await expect(pop.getByTestId("external-citation-title")).toHaveText("Giải phẫu tim");
@@ -156,7 +156,10 @@ test("kết nối notebook NotebookLM → hỏi đáp với kết nối → chip
   await expect(page.getByText("Đã lưu ghi chú vào NotebookLM").first()).toBeVisible();
   await expect.poll(() => bridge.notebooks.get("ext-1")!.notes.length).toBe(1);
   expect(bridge.notebooks.get("ext-1")!.notes[0].title).toBe("Tim có mấy buồng?");
-  expect(bridge.notebooks.get("ext-1")!.notes[0].content).toContain("Tim có bốn buồng");
+  const pushed = bridge.notebooks.get("ext-1")!.notes[0].content;
+  expect(pushed).toContain("Tim gồm hai tâm nhĩ và hai tâm thất");
+  expect(pushed).not.toMatch(/\[\d+\]/); // dấu [n] cục bộ bị bỏ vì vô nghĩa bên ngoài
+  expect(pushed).toContain("- Giải phẫu tim");
 
   // Nhập nguồn từ NotebookLM → nguồn text cục bộ → sẵn sàng
   await conn.getByTestId("connection-menu").click();
@@ -173,8 +176,7 @@ test("kết nối notebook NotebookLM → hỏi đáp với kết nối → chip
   await conn.getByTestId("connection-menu").click();
   await page.getByTestId("connection-share").click();
   await expect(page.getByText("Thành viên có thể hỏi đáp qua kết nối này")).toBeVisible();
-  await expect(conn.getByText("chia sẻ", { exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(conn.getByText(/chia sẻ/)).toBeVisible();
   await conn.getByTestId("connection-menu").click();
   await page.getByTestId("connection-remove").click();
   await page.getByTestId("connection-remove-confirm").click();
