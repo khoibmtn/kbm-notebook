@@ -1,4 +1,5 @@
 import http from "node:http";
+import { gzipSync } from "node:zlib";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { IngestError } from "@/server/knowledge/ingest/errors";
@@ -90,5 +91,74 @@ describe("safeFetch", () => {
 
   it("chặn cả khi chuyển hướng vào địa chỉ nội bộ", async () => {
     await expect(safeFetch(`http://127.0.0.1:${port}/redirect`)).rejects.toBeInstanceOf(IngestError);
+  });
+});
+
+describe("safeFetch (cơ chế tải, bỏ chặn loopback để dùng server cục bộ)", () => {
+  let server: http.Server;
+  let port = 0;
+  const open = { isBlockedIp: () => false };
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      switch (req.url) {
+        case "/gzip":
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Encoding": "gzip" });
+          return res.end(gzipSync("<html><body><p>Nội dung nén gzip</p></body></html>"));
+        case "/hop1":
+          res.writeHead(302, { Location: "/hop2" });
+          return res.end();
+        case "/hop2":
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          return res.end("đích cuối");
+        case "/loop":
+          res.writeHead(302, { Location: "/loop" });
+          return res.end();
+        case "/big":
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          return res.end(Buffer.alloc(2048, 97));
+        case "/slow":
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.write("a");
+          return; // không bao giờ kết thúc
+        case "/ua":
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          return res.end(String(req.headers["user-agent"]));
+        default:
+          res.writeHead(404);
+          return res.end("no");
+      }
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    port = (server.address() as AddressInfo).port;
+  });
+  afterAll(
+    () =>
+      new Promise<void>((r) => {
+        server.closeAllConnections();
+        server.close(() => r());
+      }),
+  );
+  const url = (p: string) => `http://127.0.0.1:${port}${p}`;
+
+  it("giải nén gzip, theo redirect, gửi User-Agent", async () => {
+    const gz = await safeFetch(url("/gzip"), open);
+    expect(gz.contentType).toContain("text/html");
+    expect(gz.body.toString()).toContain("Nội dung nén gzip");
+    const redirected = await safeFetch(url("/hop1"), open);
+    expect(redirected.body.toString()).toBe("đích cuối");
+    expect(redirected.finalUrl).toBe(url("/hop2"));
+    expect((await safeFetch(url("/ua"), open)).body.toString()).toMatch(/Mozilla\/5\.0/);
+  });
+
+  it("giới hạn dung lượng, số lần redirect, thời gian chờ và mã lỗi HTTP", async () => {
+    await expect(safeFetch(url("/big"), { ...open, maxBytes: 1024 })).rejects.toThrow(/vượt quá/);
+    await expect(safeFetch(url("/loop"), { ...open, maxRedirects: 3 })).rejects.toThrow(/chuyển hướng/);
+    const slow = await safeFetch(url("/slow"), { ...open, timeoutMs: 300 }).catch((e: unknown) => e);
+    expect(slow).toBeInstanceOf(IngestError);
+    expect((slow as IngestError).message).toMatch(/Hết thời gian/);
+    expect((slow as IngestError).permanent).toBe(false);
+    const nf = await safeFetch(url("/nope"), open).catch((e: unknown) => e);
+    expect((nf as IngestError).message).toContain("404");
+    expect((nf as IngestError).permanent).toBe(true);
   });
 });

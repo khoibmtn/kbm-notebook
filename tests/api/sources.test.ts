@@ -1,6 +1,6 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Server } from "socket.io";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as search } from "@/app/api/notebooks/[id]/search/route";
 import { GET as listSources, POST as createSource } from "@/app/api/notebooks/[id]/sources/route";
 import { DELETE as deleteSource, GET as getSource, PATCH as patchSource } from "@/app/api/notebooks/[id]/sources/[sourceId]/route";
@@ -18,6 +18,19 @@ import { makeBlankPdf, makeDocx, makeFile, makePdf, makePptx } from "../helpers/
 import { makeRequest, params, type TestUser } from "../helpers/users";
 
 const PDF = "application/pdf";
+
+const PAGE_HTML = `<!doctype html><html><head><title>Bài viết về núi lửa</title></head><body><nav>Menu</nav><article>
+<h1>Núi lửa Krakatoa</h1><p>Krakatoa là một đảo núi lửa ở eo biển Sunda, nổi tiếng với vụ phun trào dữ dội năm 1883 làm thay đổi khí hậu toàn cầu trong nhiều năm, và gây ra sóng thần cực lớn.</p>
+<p>Các nhà địa chất vẫn theo dõi hoạt động của Anak Krakatau, hòn đảo mới hình thành từ miệng núi lửa cũ, bằng địa chấn kế và ảnh vệ tinh.</p></article></body></html>`;
+
+// Không dùng mạng thật: giả lập bước tải trang (kiểm tra SSRF/gzip/redirect đã có test riêng ở tests/unit/ssrf.test.ts).
+vi.mock("@/server/knowledge/ingest/ssrf", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/server/knowledge/ingest/ssrf")>();
+  return {
+    ...mod,
+    safeFetch: vi.fn(async (u: string) => ({ finalUrl: u, contentType: "text/html; charset=utf-8", status: 200, body: Buffer.from(PAGE_HTML) })),
+  };
+});
 
 /** Chạy mọi job ingest_source đang chờ (chỉ file test này tạo loại job này). */
 async function runIngestJobs(): Promise<string[]> {
@@ -124,6 +137,28 @@ describe("upload → ingest → search", () => {
     expect(ribo.evidence[0].locator.page).toBe(3);
   });
 
+  it("PDF 50 trang → ready; mỗi truy vấn trả chunk đúng trang", async () => {
+    const { owner, notebook } = await createNotebookWithMembers();
+    const topics = ["volcano", "glacier", "monsoon", "tectonic", "savanna", "tundra", "estuary", "plateau", "archipelago", "peninsula"];
+    const pages = Array.from({ length: 50 }, (_, i) => {
+      const n = i + 1;
+      const topic = `${topics[i % 10]}${n}`; // từ khoá duy nhất cho từng trang
+      return `Section ${n}. This page describes ${topic}. ` + `The ${topic} is discussed with several unrelated filler sentences about geography and climate, number ${n}. `.repeat(6);
+    });
+    const { res, body } = await doUpload(notebook.id, owner, [makeFile(await makePdf(pages), "dia-ly-50-trang.pdf", PDF)]);
+    expect(res.status).toBe(201);
+    expect(await runIngestJobs()).toEqual(["done"]);
+    const { source } = await detail(notebook.id, owner, body.sources[0].id);
+    expect(source).toMatchObject({ status: "ready", pageCount: 50 });
+    expect(new Set(source!.chunks.map((c) => c.page)).size).toBe(50);
+    for (const n of [1, 17, 33, 50]) {
+      const topic = `${topics[(n - 1) % 10]}${n}`;
+      const { evidence } = await doSearch(notebook.id, owner, { query: `Tell me about ${topic}` });
+      expect(evidence[0].locator.page, `trang ${n}`).toBe(n);
+      expect(evidence[0].text).toContain(topic);
+    }
+  });
+
   it("DOCX, PPTX, văn bản dán: locator đúng (section / slide)", async () => {
     const { owner, notebook } = await createNotebookWithMembers();
     const docx = await makeDocx([{ heading: "Quang hợp" }, { text: "Cây xanh tạo ra glucose nhờ ánh sáng mặt trời." }, { heading: "Hô hấp" }, { text: "Ty thể tạo ra năng lượng ATP." }]);
@@ -155,6 +190,24 @@ describe("upload → ingest → search", () => {
 
     const pyt = await doSearch(notebook.id, owner, { query: "định lý Pythagoras" });
     expect(pyt.evidence[0]).toMatchObject({ sourceTitle: "Ghi chú" });
+  });
+
+  it("URL: tải trang → Readability → tiêu đề trang thay tên tạm, search tìm thấy, có finalUrl", async () => {
+    const { owner, notebook } = await createNotebookWithMembers();
+    const res = await createSource(
+      makeRequest(`/x`, { method: "POST", user: owner, body: { kind: "url", url: "http://93.184.216.34/nui-lua" } }),
+      params({ id: notebook.id }),
+    );
+    expect(res.status).toBe(201);
+    const { source } = (await res.json()) as { source: SourceDto };
+    expect(source).toMatchObject({ kind: "url", status: "pending", title: "93.184.216.34/nui-lua", url: "http://93.184.216.34/nui-lua" });
+    expect(await runIngestJobs()).toEqual(["done"]);
+    const detailed = (await detail(notebook.id, owner, source.id)).source!;
+    expect(detailed).toMatchObject({ status: "ready", title: "Bài viết về núi lửa" });
+    expect(detailed.pages.some((p) => p.section === "Núi lửa Krakatoa")).toBe(true);
+    const hit = await doSearch(notebook.id, owner, { query: "Anak Krakatau địa chấn kế" });
+    expect(hit.evidence[0]).toMatchObject({ sourceId: source.id, sourceTitle: "Bài viết về núi lửa" });
+    expect(hit.evidence[0].locator.section).toBeDefined();
   });
 
   it("lọc theo sourceIds; mảng rỗng → không có kết quả", async () => {
