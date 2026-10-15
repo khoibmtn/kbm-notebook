@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { POST as exportRoute } from "@/app/api/artifacts/[artifactId]/export/route";
+import { POST as rawExportRoute } from "@/app/api/artifacts/[artifactId]/export/route";
 import { POST as regenerateRoute } from "@/app/api/artifacts/[artifactId]/regenerate/route";
 import { POST as aiEditRoute } from "@/app/api/artifacts/[artifactId]/slides/[slideId]/ai-edit/route";
-import { POST as createArtifactRoute } from "@/app/api/notebooks/[id]/artifacts/route";
+import { POST as rawCreateArtifactRoute } from "@/app/api/notebooks/[id]/artifacts/route";
 import { POST as createConversationRoute } from "@/app/api/notebooks/[id]/conversations/route";
-import { POST as createSourceRoute } from "@/app/api/notebooks/[id]/sources/route";
+import { POST as rawCreateSourceRoute } from "@/app/api/notebooks/[id]/sources/route";
 import { addVersion } from "@/server/artifacts/service";
 import { db } from "@/server/db";
 import { jobs } from "@/server/db/schema";
@@ -13,7 +13,7 @@ import { resetEnvCache } from "@/server/env";
 import { ingestSource } from "@/server/knowledge/ingest/pipeline";
 import { createSourceFromText } from "@/server/knowledge/sources";
 import { createNotebookWithMembers, insertArtifact } from "../helpers/fixtures";
-import { insertReadySource, SAMPLE_PAGES } from "../helpers/artifacts";
+import { insertReadySource, parkJobs, SAMPLE_PAGES } from "../helpers/artifacts";
 import { json } from "../helpers/team-chat";
 import { makeRequest, params, type TestUser } from "../helpers/users";
 
@@ -21,6 +21,23 @@ afterEach(() => {
   delete process.env.MAX_INGEST_TOKENS_PER_DAY;
   resetEnvCache();
 });
+
+type Ctx = { params: Promise<{ id: string }> };
+async function exportRoute(req: Request, ctx: { params: Promise<{ artifactId: string }> }) {
+  const res = await rawExportRoute(req, ctx);
+  await db.execute(sql`UPDATE jobs SET run_at = now() + interval '1 day' WHERE status = 'queued' AND payload->>'artifactId' = ${(await ctx.params).artifactId}`);
+  return res;
+}
+async function createSourceRoute(req: Request, ctx: Ctx) {
+  const res = await rawCreateSourceRoute(req, ctx);
+  await parkJobs((await ctx.params).id);
+  return res;
+}
+async function createArtifactRoute(req: Request, ctx: Ctx) {
+  const res = await rawCreateArtifactRoute(req, ctx);
+  await parkJobs((await ctx.params).id);
+  return res;
+}
 
 /** Xoá các job do test này xếp để không bị file test khác (chạy song song) nhặt nhầm. */
 async function dropJobs(notebookId: string) {

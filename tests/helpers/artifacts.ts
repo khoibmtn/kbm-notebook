@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { sourceChunks, sources } from "@/server/db/schema";
 import { hashEmbed } from "@/server/ai/mock";
@@ -64,3 +65,13 @@ export const SAMPLE_PAGES = [
   "Ty thể là bào quan tạo ra ATP thông qua hô hấp tế bào, thường được gọi là nhà máy năng lượng của tế bào.",
   "Ribosome tổng hợp protein dựa trên thông tin di truyền do RNA thông tin mang đến từ nhân tế bào.",
 ];
+
+/**
+ * "Đỗ" các job đang chờ của một sổ tay (đẩy `run_at` sang ngày mai) để file test khác chạy song song trên cùng DB
+ * (vd. `runIngestJobs` / `runJobsOfType`) không nhặt nhầm job của test này. Gọi ngay sau khi tạo job.
+ */
+export async function parkJobs(notebookId: string): Promise<void> {
+  await db.execute(
+    sql`UPDATE jobs SET run_at = now() + interval '1 day' WHERE status = 'queued' AND payload->>'notebookId' = ${notebookId}`,
+  );
+}

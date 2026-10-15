@@ -19,7 +19,7 @@ import { generateArtifactNow } from "@/server/jobs/handlers/generate-artifact";
 import { softDeleteNotebook } from "@/server/notebooks/service";
 import type { ArtifactDetailDto, ArtifactDto, ArtifactVersionDto } from "@/lib/artifacts/meta";
 import { createNotebookWithMembers, insertArtifact } from "../helpers/fixtures";
-import { insertReadySource, SAMPLE_PAGES } from "../helpers/artifacts";
+import { insertReadySource, parkJobs, SAMPLE_PAGES } from "../helpers/artifacts";
 import { makeRequest, params, type TestUser } from "../helpers/users";
 
 const REPORT_JSON = { title: "Báo cáo", markdown: "# Tế bào\n\nQuang hợp diễn ra ở lục lạp [1]. Ty thể sản xuất ATP [2]." };
@@ -51,6 +51,7 @@ type Ctx = Awaited<ReturnType<typeof setup>>;
 async function create(c: Ctx, user: TestUser, body: Record<string, unknown>) {
   const res = await createArtifact(makeRequest(`/api/notebooks/${c.notebook.id}/artifacts`, { method: "POST", user, body }), params({ id: c.notebook.id }));
   const parsed = (await res.json()) as { artifact?: ArtifactDto; error?: { code: string; message: string } };
+  await parkJobs(c.notebook.id); // job generate_artifact do runGenerate() chạy trực tiếp, không để file test khác nhặt
   return { res, ...parsed };
 }
 async function detail(id: string, user: TestUser | null, query = "") {
@@ -117,6 +118,7 @@ describe("H-5 · nguồn riêng tư không lộ qua artifact chia sẻ", () => {
     // Tạo lại với phạm vi mặc định (tất cả): nguồn riêng tư bị loại để không làm lộ
     const re = await regenerate(makeRequest("/x", { method: "POST", user: c.owner, body: { scope: { sourceIds: [] } } }), params({ artifactId: artifact!.id }));
     expect(re.status).toBeLessThan(300);
+    await parkJobs(c.notebook.id);
     await runGenerate(artifact!.id);
     const after = await detail(artifact!.id, c.owner);
     expect(after.body.artifact).toMatchObject({ visibility: "link", containsPrivateSources: false });

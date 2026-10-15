@@ -14,6 +14,7 @@ import { notebookMembers, sources } from "@/server/db/schema";
 import { getStorage } from "@/server/storage/local";
 import { transferOwnership } from "@/server/notebooks/service";
 import { chatFixture, fetchMessages, json, openDm, send } from "../helpers/team-chat";
+import { parkJobs } from "../helpers/artifacts";
 import { createNotebookWithMembers, insertSource } from "../helpers/fixtures";
 import { makeRequest, params } from "../helpers/users";
 
@@ -115,6 +116,7 @@ describe("L-14 · khử trùng 'chuyển tệp chat vào Nguồn' không lộ ng
     // admin đã có nguồn RIÊNG TƯ dùng cùng tệp
     const secret = await insertSource(notebook.id, members.admin.id, { kind: "chat_attachment", fileId: up.id, visibility: "private", title: "Riêng của admin" });
     const res = await toSource(makeRequest("/x", { method: "POST", user: members.editor, body: {} }), params({ channelId: general, messageId: msg }));
+    await parkJobs(notebook.id);
     expect(res.status).toBe(201);
     const out = (await json(res)).sources as { id: string; title: string; existing: boolean }[];
     expect(out[0].id).not.toBe(secret.id);

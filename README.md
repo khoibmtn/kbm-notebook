@@ -41,8 +41,15 @@ openssl rand -hex 32        # APP_ENCRYPTION_KEY (32 byte hex)
 | `AI_PROVIDER` | `gemini` (mặc định) hoặc `mock` (dữ liệu giả lập cho dev/test) |
 | `GEMINI_API_KEY` | Khoá Gemini dùng chung của máy chủ (tuỳ chọn; mỗi người dùng có thể nhập khoá riêng ở Cài đặt → AI) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Bật đăng nhập Google (tuỳ chọn) |
-| `CONNECTORS_ALLOW_PRIVATE_HOSTS` | `true` (mặc định) cho phép người dùng trỏ NotebookLM Bridge tới localhost/LAN (có công tắc đồng ý riêng); đặt `false` trên máy chủ dùng chung để chặn SSRF vào mạng nội bộ |
-| `STORAGE_DIR`, `MAX_UPLOAD_MB` | Thư mục lưu tệp (mặc định `./storage`) và giới hạn tải lên (mặc định 50) |
+| `CONNECTORS_ALLOW_PRIVATE_HOSTS` | `false` (mặc định) chặn NotebookLM Bridge ở localhost/LAN để tránh SSRF vào mạng nội bộ của máy chủ. Chỉ đặt `true` khi máy chủ chạy riêng cho một người/nhóm tin cậy và Bridge nằm trên máy/LAN đó (người dùng vẫn phải bật công tắc "Cho phép địa chỉ nội bộ" ở từng kết nối). Metadata đám mây luôn bị chặn |
+| `AUTH_REQUIRE_EMAIL_VERIFICATION` | Email chưa xác minh không được dùng làm danh tính (lời mời theo email, chia sẻ artifact theo email, chấp nhận lời mời bằng liên kết). Mặc định `true` ở production, `false` ở dev/test để không cần máy chủ mail |
+| `SMTP_URL`, `EMAIL_FROM` | Gửi email xác minh qua SMTP (vd. `smtps://user:pass@smtp.example.com:465`). Để trống = ghi liên kết xác minh ra log máy chủ (`ConsoleEmailSender`, dùng cho dev) |
+| `STORAGE_DIR`, `MAX_UPLOAD_MB` | Thư mục lưu tệp (mặc định `./storage`) và giới hạn mỗi tệp tải lên (mặc định 50) |
+| `MAX_NOTEBOOK_STORAGE_MB`, `MAX_UPLOAD_REQUEST_MB` | Tổng dung lượng tệp mỗi sổ tay (mặc định 2048) và kích thước tối đa một request tải lên (mặc định 512); vượt → 413 |
+| `UPLOAD_MAX_FILES_PER_10MIN`, `UPLOAD_MAX_MB_PER_HOUR` | Hạn mức tải lên theo người dùng (mặc định 30 tệp / 10 phút, 300 MB / giờ); vượt → 429 |
+| `MAX_INGEST_TOKENS_PER_DAY` | Ngân sách token xử lý nguồn (embedding + tóm tắt) mỗi người dùng mỗi ngày (mặc định 2.000.000); cạn → nguồn `failed` / 429 |
+| `INGEST_EXTRACT_TIMEOUT_SEC`, `INGEST_EXTRACT_MAX_MB` | Giới hạn thời gian (mặc định 120 giây) và bộ nhớ (mặc định 1024 MB) của worker trích xuất văn bản từ một tệp/trang |
+| `TRUSTED_ORIGINS` | Origin tin cậy thêm (phân tách bằng dấu phẩy) cho cookie đăng nhập, kiểm tra Origin của API và Socket.IO khi triển khai sau proxy/tên miền khác |
 | `PORT` | Cổng máy chủ (mặc định 3000) |
 | `GEMINI_CHAT_MODEL`, `GEMINI_ARTIFACT_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_IMAGE_MODEL` | Ghi đè model mặc định (tuỳ chọn) |
 | `PW_CHROMIUM_PATH` | Đường dẫn Chromium dùng xuất PDF/PNG/SVG của Studio (mặc định tìm trong `/opt/pw-browsers`); thiếu Chromium thì PDF dự phòng bằng LibreOffice (`soffice`) |
@@ -65,7 +72,7 @@ Trong sổ tay: cột Nguồn → **Kết nối ngoài** → "Kết nối notebo
 | Lệnh | Tác dụng |
 |---|---|
 | `pnpm dev` | Chạy custom server (`server.ts`: Next + Socket.IO + job worker) bằng `tsx` |
-| `pnpm build` | `next build` + bundle `server.ts` → `dist/server.js` |
+| `pnpm build` | `next build` + bundle `server.ts` → `dist/server.js` và worker trích xuất → `dist/extract-worker.js` (bắt buộc có khi chạy production) |
 | `pnpm start` | Chạy bản production (`node dist/server.js`) |
 | `pnpm lint` / `pnpm typecheck` | ESLint / `tsc --noEmit` |
 | `pnpm test` | Vitest (unit + API + component). Tự tạo lại DB `kbm_notebook_test` và migrate; cần quyền tạo DB trên máy chủ Postgres (đổi bằng `TEST_DATABASE_URL`) |

@@ -109,6 +109,8 @@ Socket.IO namespace `/rt`, auth bằng cookie session better-auth khi handshake.
 5. Settings: khoá API, model, prompt mặc định từng loại artifact, kết nối NotebookLM Bridge/Enterprise, Google.
 
 ## 5. Bảo mật
+> Kết quả rà soát bảo mật và trạng thái xử lý từng phát hiện: [docs/10-ra-soat-bao-mat.md](10-ra-soat-bao-mat.md).
+
 - Session cookie httpOnly; CSRF theo better-auth; rate-limit route AI (per user) bằng bảng `rate_limits`.
 - Tệp tải lên: kiểm MIME + kích thước (mặc định 50MB), lưu ngoài `public`, phục vụ qua route có kiểm quyền; tên tệp sinh UUID.
 - Khoá API/credential mã hoá AES-256-GCM; không log.
@@ -132,7 +134,7 @@ Các điểm dưới đây phản ánh code thật sau P0; phase sau dựa vào 
 
 **Phân quyền**
 - `requireNotebookRole`: không phải thành viên / notebook đã xoá → **404** (không lộ sự tồn tại); là thành viên nhưng thiếu quyền → **403**. Logic thứ bậc vai trò dùng chung client/server ở `src/lib/roles.ts`.
-- Chấp nhận lời mời (`POST /api/invites/[token]/accept`) yêu cầu email tài khoản **trùng** email được mời (chưa có xác minh email nên token một mình chưa đủ). Lời mời hết hạn sau 7 ngày. Mời email đã có tài khoản → thêm thẳng vào `notebook_members` + `channel_members` của kênh `general`.
+- Chấp nhận lời mời (`POST /api/invites/[token]/accept`) yêu cầu email tài khoản **trùng** email được mời **và đã xác minh** (khi `AUTH_REQUIRE_EMAIL_VERIFICATION` bật — mặc định ở production; xem `docs/10-ra-soat-bao-mat.md`), người mời còn đủ quyền gán vai trò đó. Lời mời hết hạn sau 7 ngày. Mời email đã có tài khoản **đã xác minh** → thêm thẳng vào `notebook_members` + `channel_members` của kênh `general`; chưa xác minh → tạo lời mời (liên kết).
 - Chỉ owner được đặt `defaultArtifactVisibility = public`. Chủ sở hữu bất biến qua PATCH/DELETE member; đổi chủ qua `POST /api/notebooks/[id]/transfer` (owner cũ → admin).
 - Quy ước JSON của API là camelCase (`systemInstruction`, `allowWeb`, `defaultArtifactVisibility`, `coverColor`).
 
@@ -285,7 +287,19 @@ Chi tiết đầy đủ, API và mô hình bảo mật: [docs/07-ket-noi.md](07-
 - **`Evidence`** (providers/types.ts) có thêm `kind?: 'chunk' | 'external_answer' | 'web'`, `connectionId?`, `externalUrl?`. `buildSourcesUsed` khoá nguồn ngoài theo `connectionId` để hai kết nối không bị gộp.
 - **Provider**: `providers/notebooklm-bridge.ts` (`bridgeResultToEvidence` thuần + `NotebookLmBridgeProvider`, mỗi kết nối một instance) và `providers/notebooklm-enterprise.ts` (`retrieve()` ném `501 not_supported`; chỉ có helper liệt kê/tạo/thêm nguồn/chia sẻ). Client HTTP ở `src/server/connectors/{http,bridge-client,enterprise-client,drive}.ts`; nghiệp vụ kết nối ở `connections.ts`; cài đặt người dùng ở `settings.ts`.
 - **`prepareAsk`** (`chat/ask.ts`): `scope.connectionIds` → `resolveChatConnections` (403 nếu của người khác chưa chia sẻ; id lạ/Enterprise → bỏ qua + `connections_unavailable`) → truy hồi song song cục bộ + kết nối + web; thứ tự bằng chứng **cục bộ → kết nối → web**. Truy hồi chạy **trước** khi lưu tin nhắn người dùng (lỗi kết nối không để lại tin nhắn mồ côi). `ScopeAdjustReason` có thêm `connection_error` (sự kiện `scope_adjusted` kèm `detail`; `AskResult.scopeAdjustmentDetails`).
-- **SSRF của Bridge**: `connectorHttp` cho phép host nội bộ chỉ khi người dùng bật công tắc *và* máy chủ không đặt `CONNECTORS_ALLOW_PRIVATE_HOSTS=false`; luôn chặn link-local/metadata; không theo redirect.
+- **SSRF của Bridge**: `connectorHttp` cho phép host nội bộ chỉ khi người dùng bật công tắc *và* quản trị viên máy chủ đặt `CONNECTORS_ALLOW_PRIVATE_HOSTS=true` (mặc định `false`); luôn chặn link-local/metadata/CGNAT (`src/server/net/ip-policy.ts`); không theo redirect; không phản chiếu nội dung thô của máy chủ ngoài.
 - **Ingest**: `kind='drive'` được pipeline xử lý như tệp (`extractForSource`); `createSourceFromFile/Text` nhận thêm `kind`/`metadata`.
 - **UI**: `src/components/connectors/*` (thẻ kết nối, hộp chọn notebook, nhập nguồn, tab Drive, menu "Lưu vào NotebookLM"), `components/settings/connectors-settings.tsx`; i18n `src/i18n/modules/connectors.{vi,en}.ts`.
 - **Sidecar**: thêm `GET /notebooks/{id}/sources/{sourceId}/fulltext` (+ pytest).
+
+## 13. Ghi chú triển khai — rà soát bảo mật
+
+Chi tiết từng phát hiện và trạng thái: [docs/10-ra-soat-bao-mat.md](10-ra-soat-bao-mat.md). Các điểm kiến trúc cần nhớ khi mở rộng:
+
+- **Trích xuất tài liệu không chạy trong tiến trình chính**: `ingest/pipeline.ts` → `extractFileSandboxed/extractUrlSandboxed` (`ingest/extract-sandbox.ts`) chạy `extract.ts` trong `worker_threads` có timeout/giới hạn heap (`INGEST_EXTRACT_TIMEOUT_SEC`, `INGEST_EXTRACT_MAX_MB`). Production cần `dist/extract-worker.js` (do `pnpm build:server` tạo). Thêm loại tệp mới: chỉ sửa `extract.ts`, không gọi parser nặng ngoài worker.
+- **Tải lên theo dòng**: mọi route nhận tệp dùng `storage/multipart.ts` (`receiveMultipart`) hoặc `formDataWithLimit`; không dùng `req.formData()` trực tiếp. `StorageAdapter.put` nhận `notebookId`/`origin` để tính quota.
+- **Quyền đọc tệp**: thêm luật bằng `registerFileAccessRule`; ảnh của artifact phải được ghi bằng `registerArtifactFile` (không suy ra từ JSON).
+- **Email là danh tính chỉ khi đã xác minh**: mọi chỗ khớp theo email dùng `verifiedEmailCondition()` / `requireTrustedEmail()` (`auth/email-verified.ts`).
+- **Chính sách IP chung** cho URL do người dùng cung cấp: `server/net/ip-policy.ts` (đừng tự viết bảng dải IP mới).
+- **Bất biến nguồn riêng tư**: artifact có `contains_private_sources` chỉ ở `private`; luồng mới tạo nội dung từ nguồn phải đi qua `resolveScopeSourceIds(..., { allowPrivate })` và `privateSourceIdsAmong`.
+- **Route handler**: `handleRoute` từ chối request thay đổi trạng thái từ origin/site lạ; `parseBody` yêu cầu `Content-Type` JSON. Hạn mức thao tác tốn tiền ở `server/api/limits.ts`.

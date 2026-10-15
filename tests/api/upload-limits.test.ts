@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { POST as chatUpload } from "@/app/api/channels/[channelId]/upload/route";
-import { POST as sourceUpload } from "@/app/api/notebooks/[id]/sources/upload/route";
+import { POST as rawSourceUpload } from "@/app/api/notebooks/[id]/sources/upload/route";
 import { db } from "@/server/db";
 import { files, jobs, rateLimits } from "@/server/db/schema";
 import { resetEnvCache } from "@/server/env";
@@ -11,6 +11,7 @@ import { registerCleanupFilesHandler } from "@/server/jobs/handlers/cleanup-file
 import { cleanupOrphanFiles } from "@/server/storage/files";
 import { notebookStorageBytes } from "@/server/storage/quota";
 import { getStorage } from "@/server/storage/local";
+import { parkJobs } from "../helpers/artifacts";
 import { createNotebookWithMembers, insertSource } from "../helpers/fixtures";
 import { chatFixture, json } from "../helpers/team-chat";
 import { createTestUser, params, type TestUser } from "../helpers/users";
@@ -24,6 +25,13 @@ afterEach(() => {
   for (const k of ENV_KEYS) delete process.env[k];
   resetEnvCache();
 });
+
+/** Gọi route upload rồi "đỗ" job ingest để test song song khác không nhặt nhầm. */
+async function sourceUpload(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  const res = await rawSourceUpload(req, ctx);
+  await parkJobs((await ctx.params).id);
+  return res;
+}
 
 function form(files: { name: string; type: string; data: BlobPart }[], extra: Record<string, string> = {}) {
   const f = new FormData();
