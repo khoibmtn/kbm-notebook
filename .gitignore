@@ -32,3 +32,6 @@ next-env.d.ts
 
 # worktree tạm của agent
 .claude/worktrees/
+
+# khoá/secret sinh bởi scripts/gcp-bootstrap.sh (KHÔNG commit)
+/.gcp/

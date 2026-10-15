@@ -7,6 +7,8 @@ playwright-report
 coverage
 .git
 .claude
+.github
+.gcp
 .env
 .env.*
 !.env.example

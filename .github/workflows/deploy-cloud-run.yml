@@ -1,0 +1,428 @@
+# Deploy KBM Notebook lên Google Cloud Run — cấu hình mặc định hướng tới "0 đồng" (free tier):
+# scale-to-zero (min 0 / max 1 instance, 1 vCPU, 1 GiB), CSDL Supabase free, bucket GCS us-central1.
+# Muốn chạy luôn bật / nhiều tài nguyên hơn: đặt repository variables MIN_INSTANCES, MAX_INSTANCES, CPU_ALWAYS_ON (có phí).
+# Hướng dẫn đầy đủ: docs/08-trien-khai.md, mục "Deploy lên Google Cloud Run bằng GitHub Actions".
+# Chuẩn bị hạ tầng + sinh danh sách secrets/variables: scripts/gcp-bootstrap.sh
+#
+# LƯU Ý: pipeline này được soạn nhưng CHƯA được chạy trong môi trường phát triển (không có Docker daemon / thông tin GCP).
+#
+# Luồng: kiểm tra cấu hình -> đăng nhập GCP -> docker build + push (Artifact Registry) -> Cloud Run job migrate
+#        (chạy xong mới tới bước sau) -> deploy dịch vụ -> cập nhật URL công khai -> smoke test.
+name: Deploy Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub Environment / môi trường (production -> dịch vụ kbm-notebook; giá trị khác -> kbm-notebook-<tên>)"
+        required: false
+        default: production
+        type: string
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "bridge/**"
+      - ".claude/**"
+
+permissions:
+  contents: read
+  id-token: write # chỉ cần khi dùng Workload Identity Federation (GCP_WIF_PROVIDER + GCP_SA_EMAIL)
+
+# Không chạy hai lần triển khai cùng lúc cho một môi trường; lượt sau chờ lượt trước (không huỷ giữa chừng khi đang migrate).
+concurrency:
+  group: deploy-cloud-run-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, migrate, deploy
+    # Tắt tự động deploy khi push: đặt repository variable AUTO_DEPLOY=false (vẫn chạy tay được).
+    if: github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.environment || 'production' }}
+    env:
+      # GCP_PROJECT_ID / GCP_REGION: chấp nhận cả variable lẫn secret.
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || secrets.GCP_REGION || 'us-central1' }}
+      AR_REPO: ${{ vars.AR_REPO || 'kbm' }}
+      DEPLOY_ENV: ${{ inputs.environment || 'production' }}
+      HAS_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
+      HAS_WIF: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_SA_EMAIL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 1) Kiểm tra cấu hình sớm để lỗi rõ ràng (không in giá trị secret)
+      # ------------------------------------------------------------------
+      - name: Kiểm tra cấu hình
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          APP_ENCRYPTION_KEY: ${{ secrets.APP_ENCRYPTION_KEY }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          CLOUDSQL_INSTANCE_SECRET: ${{ secrets.CLOUDSQL_INSTANCE }}
+          RUNTIME_SA_VAR: ${{ vars.RUNTIME_SA }}
+          GCS_BUCKET: ${{ vars.GCS_BUCKET }}
+          AUTH_VERIFY: ${{ vars.AUTH_REQUIRE_EMAIL_VERIFICATION }}
+          APP_URL_VAR: ${{ vars.APP_URL }}
+          MIN_INSTANCES_VAR: ${{ vars.MIN_INSTANCES }}
+          MAX_INSTANCES_VAR: ${{ vars.MAX_INSTANCES }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${PROJECT_ID:-}" ] || missing+=("GCP_PROJECT_ID (repository variable hoặc secret)")
+          if [ "$HAS_SA_KEY" != "true" ] && [ "$HAS_WIF" != "true" ]; then
+            missing+=("GCP_SA_KEY (hoặc cặp GCP_WIF_PROVIDER + GCP_SA_EMAIL)")
+          fi
+          for n in DATABASE_URL BETTER_AUTH_SECRET APP_ENCRYPTION_KEY; do
+            [ -n "${!n:-}" ] || missing+=("$n (secret)")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            for m in "${missing[@]}"; do echo "::error::Thiếu cấu hình: $m"; done
+            echo "::error::Chạy scripts/gcp-bootstrap.sh để lấy danh sách đầy đủ, hoặc xem docs/08-trien-khai.md."
+            exit 1
+          fi
+
+          # Cùng các ràng buộc mà src/server/env.ts kiểm tra khi khởi động production (fail sớm, tránh deploy xong mới chết).
+          if ! [[ "$APP_ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::APP_ENCRYPTION_KEY phải là 64 ký tự hex (openssl rand -hex 32)."; exit 1
+          fi
+          if [[ "$APP_ENCRYPTION_KEY" =~ ^0+$ ]]; then
+            echo "::error::APP_ENCRYPTION_KEY đang là khoá mẫu toàn số 0."; exit 1
+          fi
+          if [ "${#BETTER_AUTH_SECRET}" -lt 16 ] || [[ "$BETTER_AUTH_SECRET" == *change-me* ]]; then
+            echo "::error::BETTER_AUTH_SECRET quá ngắn (<16 ký tự) hoặc là giá trị mẫu (openssl rand -base64 32)."; exit 1
+          fi
+          if ! [[ "$DATABASE_URL" =~ ^postgres(ql)?:// ]]; then
+            echo "::error::DATABASE_URL phải bắt đầu bằng postgres:// hoặc postgresql://"; exit 1
+          fi
+
+          # Tên môi trường -> tên dịch vụ / job Cloud Run.
+          if ! [[ "$DEPLOY_ENV" =~ ^[a-z][a-z0-9-]{0,30}$ ]]; then
+            echo "::error::Tên environment '$DEPLOY_ENV' không hợp lệ (chữ thường, số, gạch ngang; bắt đầu bằng chữ)."; exit 1
+          fi
+          if [ "$DEPLOY_ENV" = "production" ]; then SERVICE="kbm-notebook"; else SERVICE="kbm-notebook-${DEPLOY_ENV}"; fi
+          JOB="${SERVICE}-migrate"
+          if [ "${#JOB}" -gt 49 ]; then echo "::error::Tên job '$JOB' dài quá 49 ký tự."; exit 1; fi
+
+          # Cloud SQL: ưu tiên secret CLOUDSQL_INSTANCE; nếu trống thì suy ra từ DATABASE_URL (…host=/cloudsql/PROJECT:REGION:INSTANCE).
+          CLOUDSQL="${CLOUDSQL_INSTANCE_SECRET:-}"
+          if [ -z "$CLOUDSQL" ] && [[ "$DATABASE_URL" =~ /cloudsql/([^\&\?[:space:]]+) ]]; then
+            CLOUDSQL="${BASH_REMATCH[1]}"
+            echo "::notice::Suy ra Cloud SQL instance từ DATABASE_URL: $CLOUDSQL (có thể đặt secret CLOUDSQL_INSTANCE để tường minh)."
+          fi
+          if [ -n "$CLOUDSQL" ] && ! [[ "$DATABASE_URL" =~ /cloudsql/ ]]; then
+            echo "::warning::Có CLOUDSQL_INSTANCE nhưng DATABASE_URL không dùng ổ cắm /cloudsql/…; kết nối sẽ đi theo host trong URL."
+          fi
+          if [ -z "$CLOUDSQL" ] && [[ "$DATABASE_URL" =~ (localhost|127\.0\.0\.1) ]]; then
+            echo "::error::DATABASE_URL trỏ vào localhost — Cloud Run không với tới được. Dùng Cloud SQL (socket) hoặc Supabase."; exit 1
+          fi
+
+          # Supabase: Cloud Run chỉ ra Internet bằng IPv4, còn "direct connection" (db.<ref>.supabase.co) của gói free chỉ có IPv6.
+          # Dùng SESSION pooler (cổng 5432, user postgres.<ref>) — không dùng transaction pooler (6543).
+          if [[ "$DATABASE_URL" =~ @db\.[a-z0-9]+\.supabase\.co ]]; then
+            echo "::warning::DATABASE_URL đang dùng direct connection của Supabase (chỉ IPv6, Cloud Run thường không với tới). Hãy dùng Session pooler: aws-0-<vùng>.pooler.supabase.com:5432."
+          fi
+          if [[ "$DATABASE_URL" =~ pooler\.supabase\.com:6543 ]]; then
+            echo "::warning::DATABASE_URL đang dùng Transaction pooler (cổng 6543). Hãy dùng Session pooler (cổng 5432)."
+          fi
+          if [[ "$DATABASE_URL" =~ supabase\.(co|com) ]] && ! [[ "$DATABASE_URL" =~ sslmode= ]]; then
+            echo "::warning::DATABASE_URL Supabase nên có ?sslmode=require ở cuối."
+          fi
+
+          # Các biến tuỳ chọn.
+          case "${AUTH_VERIFY:-false}" in true|false) ;; *) echo "::error::Variable AUTH_REQUIRE_EMAIL_VERIFICATION chỉ nhận true|false."; exit 1;; esac
+          if [ "${AUTH_VERIFY:-false}" = "true" ] && [ -z "${SMTP_URL:-}" ]; then
+            echo "::warning::Bật xác minh email nhưng chưa có secret SMTP_URL: email xác minh chỉ được ghi ra log Cloud Run."
+          fi
+          if [ -n "${APP_URL_VAR:-}" ] && ! [[ "$APP_URL_VAR" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "::error::Variable APP_URL phải bắt đầu bằng https://"; exit 1
+          fi
+          for v in "${MIN_INSTANCES_VAR:-0}" "${MAX_INSTANCES_VAR:-1}"; do
+            [[ "$v" =~ ^[0-9]+$ ]] || { echo "::error::MIN_INSTANCES / MAX_INSTANCES phải là số nguyên."; exit 1; }
+          done
+          if [ -z "${GCS_BUCKET:-}" ]; then
+            echo "::warning::Chưa đặt variable GCS_BUCKET: tệp tải lên nằm trên đĩa tạm của instance và MẤT khi instance bị thay/khởi động lại."
+          fi
+
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/kbm-notebook"
+          {
+            echo "SERVICE=$SERVICE"
+            echo "JOB=$JOB"
+            echo "CLOUDSQL=$CLOUDSQL"
+            echo "RUNTIME_SA=${RUNTIME_SA_VAR:-kbm-runtime@${PROJECT_ID}.iam.gserviceaccount.com}"
+            echo "IMAGE_BASE=$IMAGE_BASE"
+            echo "IMAGE=${IMAGE_BASE}:${GITHUB_SHA}"
+          } >> "$GITHUB_ENV"
+          echo "Môi trường: $DEPLOY_ENV | dịch vụ: $SERVICE | job migrate: $JOB | vùng: $REGION"
+
+      # ------------------------------------------------------------------
+      # 2) Xác thực GCP: khoá service account (chính) hoặc Workload Identity (tuỳ chọn)
+      # ------------------------------------------------------------------
+      - name: Xác thực GCP (khoá service account)
+        if: env.HAS_SA_KEY == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Xác thực GCP (Workload Identity Federation)
+        if: env.HAS_SA_KEY != 'true' && env.HAS_WIF == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Cài gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          version: ">= 480.0.0"
+
+      - name: Cấu hình Docker cho Artifact Registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud auth list --filter=status:ACTIVE --format='value(account)'
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      # ------------------------------------------------------------------
+      # 3) Build + push image (BuildKit + cache lớp trên GitHub Actions cache để build lại nhanh)
+      # ------------------------------------------------------------------
+      - name: Cài Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build và push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          # Thẻ theo commit (bất biến, dùng để deploy) + latest.
+          tags: |
+            ${{ env.IMAGE }}
+            ${{ env.IMAGE_BASE }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          # Không thêm manifest provenance/SBOM: tránh tạo thêm "image" trong Artifact Registry (free 0,5 GB) và lẫn cleanup policy.
+          provenance: false
+          sbom: false
+          # Không truyền WITH_LIBREOFFICE: image gọn (PDF dùng Chromium).
+          cache-from: type=gha,scope=kbm-notebook
+          cache-to: type=gha,mode=max,scope=kbm-notebook
+
+      # ------------------------------------------------------------------
+      # 4) Xác định URL công khai (variable APP_URL, hoặc URL của dịch vụ đã tồn tại)
+      # ------------------------------------------------------------------
+      - name: Xác định URL ứng dụng
+        shell: bash
+        env:
+          APP_URL_VAR: ${{ vars.APP_URL }}
+        run: |
+          set -euo pipefail
+          url=""
+          if [ -n "${APP_URL_VAR:-}" ]; then
+            url="${APP_URL_VAR%/}"
+            echo "URL từ variable APP_URL: $url"
+          else
+            url="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+              --format='value(status.url)' 2>/dev/null || true)"
+            if [ -n "$url" ]; then echo "URL của dịch vụ đã tồn tại: $url"; else echo "Chưa có dịch vụ: sẽ deploy hai pha (đặt URL sau lần deploy đầu)."; fi
+          fi
+          echo "APP_URL=$url" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------
+      # 5) Migration bằng Cloud Run job — phải xong (thành công) trước khi deploy dịch vụ
+      # ------------------------------------------------------------------
+      - name: Migration (Cloud Run job)
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ENV_FILE="$(mktemp "${RUNNER_TEMP}/migrate-env.XXXXXX.yaml")"
+          trap 'rm -f "$ENV_FILE"' EXIT
+          # JSON là tập con của YAML; jq lo việc thoát ký tự đặc biệt (tránh lỗi dấu phẩy/dấu = trong giá trị).
+          jq -n --arg db "$DATABASE_URL" '{NODE_ENV: "production", DATABASE_URL: $db}' > "$ENV_FILE"
+
+          args=(run jobs deploy "$JOB"
+            --project "$PROJECT_ID" --region "$REGION"
+            --image "$IMAGE"
+            --command node --args dist/migrate.js
+            --env-vars-file "$ENV_FILE"
+            --service-account "$RUNTIME_SA"
+            --cpu 1 --memory 512Mi
+            --tasks 1 --max-retries 0 --task-timeout 15m
+            --execute-now --wait --quiet)
+          if [ -n "$CLOUDSQL" ]; then args+=(--set-cloudsql-instances "$CLOUDSQL"); fi
+
+          # `jobs deploy --execute-now --wait` tạo/cập nhật job rồi chạy và chờ kết thúc; thất bại -> mã thoát khác 0 -> dừng pipeline.
+          # (Nếu gcloud quá cũ không có cờ này: bỏ --execute-now/--wait, rồi chạy `gcloud run jobs execute "$JOB" --wait`.)
+          gcloud "${args[@]}"
+
+      # ------------------------------------------------------------------
+      # 6) Deploy dịch vụ
+      # ------------------------------------------------------------------
+      - name: Deploy dịch vụ Cloud Run
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          APP_ENCRYPTION_KEY: ${{ secrets.APP_ENCRYPTION_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          AUTH_VERIFY: ${{ vars.AUTH_REQUIRE_EMAIL_VERIFICATION }}
+          GCS_BUCKET: ${{ vars.GCS_BUCKET }}
+          GCS_MOUNT_OPTIONS: ${{ vars.GCS_MOUNT_OPTIONS }}
+          MIN_INSTANCES: ${{ vars.MIN_INSTANCES }}
+          MAX_INSTANCES: ${{ vars.MAX_INSTANCES }}
+          CPU_ALWAYS_ON: ${{ vars.CPU_ALWAYS_ON }}
+          # Tuỳ chọn (variable): chỉ chuyển tiếp nếu có giá trị.
+          OPT_TRUSTED_ORIGINS: ${{ vars.TRUSTED_ORIGINS }}
+          OPT_EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          OPT_MAX_UPLOAD_MB: ${{ vars.MAX_UPLOAD_MB }}
+          OPT_MAX_NOTEBOOK_STORAGE_MB: ${{ vars.MAX_NOTEBOOK_STORAGE_MB }}
+          OPT_MAX_UPLOAD_REQUEST_MB: ${{ vars.MAX_UPLOAD_REQUEST_MB }}
+          OPT_DB_POOL_MAX: ${{ vars.DB_POOL_MAX }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ENV_FILE="$(mktemp "${RUNNER_TEMP}/service-env.XXXXXX.yaml")"
+          trap 'rm -f "$ENV_FILE" "$ENV_FILE.tmp"' EXIT
+          echo '{}' > "$ENV_FILE"
+
+          # add KEY VALUE: thêm vào tệp env (JSON) nếu VALUE không rỗng — biến rỗng bị bỏ qua.
+          add() {
+            [ -n "${2:-}" ] || return 0
+            jq --arg k "$1" --arg v "$2" '. + {($k): $v}' "$ENV_FILE" > "$ENV_FILE.tmp"
+            mv "$ENV_FILE.tmp" "$ENV_FILE"
+          }
+
+          # --- không bí mật ---
+          add NODE_ENV production
+          add AI_PROVIDER gemini
+          add STORAGE_DIR /data/storage
+          add PW_CHROMIUM_PATH /usr/bin/chromium
+          add SKIP_MIGRATE true                       # migration đã chạy ở job riêng (xem Dockerfile CMD)
+          add AUTH_REQUIRE_EMAIL_VERIFICATION "${AUTH_VERIFY:-false}"
+          add CONNECTORS_ALLOW_PRIVATE_HOSTS false
+          add TRUSTED_ORIGINS "${OPT_TRUSTED_ORIGINS:-}"
+          add EMAIL_FROM "${OPT_EMAIL_FROM:-}"
+          add MAX_UPLOAD_MB "${OPT_MAX_UPLOAD_MB:-}"
+          add MAX_NOTEBOOK_STORAGE_MB "${OPT_MAX_NOTEBOOK_STORAGE_MB:-}"
+          add MAX_UPLOAD_REQUEST_MB "${OPT_MAX_UPLOAD_REQUEST_MB:-}"
+          add DB_POOL_MAX "${OPT_DB_POOL_MAX:-5}"   # pooler Supabase free có ít kết nối; 1 instance x 5 là đủ
+          if [ -n "${APP_URL:-}" ]; then
+            add BETTER_AUTH_URL "$APP_URL"
+            add NEXT_PUBLIC_APP_URL "$APP_URL"
+          fi
+
+          # --- bí mật (từ GitHub secrets; giá trị rỗng bị bỏ qua) ---
+          add DATABASE_URL "$DATABASE_URL"
+          add BETTER_AUTH_SECRET "$BETTER_AUTH_SECRET"
+          add APP_ENCRYPTION_KEY "$APP_ENCRYPTION_KEY"
+          add GEMINI_API_KEY "${GEMINI_API_KEY:-}"
+          add SMTP_URL "${SMTP_URL:-}"
+          add GOOGLE_CLIENT_ID "${GOOGLE_CLIENT_ID:-}"
+          add GOOGLE_CLIENT_SECRET "${GOOGLE_CLIENT_SECRET:-}"
+
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::notice::Chưa có secret GEMINI_API_KEY: người dùng phải tự nhập khoá ở Cài đặt -> AI, nếu không tính năng AI trả HTTP 412."
+          fi
+
+          args=(run deploy "$SERVICE"
+            --project "$PROJECT_ID" --region "$REGION" --platform managed
+            --image "$IMAGE"
+            --allow-unauthenticated
+            --port 3000
+            --cpu 1 --memory 1Gi
+            --min-instances "${MIN_INSTANCES:-0}" --max-instances "${MAX_INSTANCES:-1}"
+            --session-affinity
+            --timeout 3600
+            --concurrency 80
+            --cpu-boost
+            --execution-environment gen2
+            --service-account "$RUNTIME_SA"
+            --env-vars-file "$ENV_FILE"
+            --quiet)
+
+          # Mặc định (free tier): CPU chỉ được cấp khi có request (tính phí theo request, nằm trong hạn mức miễn phí). Hệ quả: job worker
+          # chạy trong tiến trình (ingest nguồn, xuất file) chỉ tiến triển nhanh khi trang đang mở (client gọi API/WebSocket).
+          # CPU_ALWAYS_ON=true => --no-cpu-throttling (CPU cấp liên tục trong lúc instance sống; tính phí theo instance — CÓ THỂ MẤT PHÍ).
+          if [ "${CPU_ALWAYS_ON:-false}" = "true" ]; then args+=(--no-cpu-throttling); else args+=(--cpu-throttling); fi
+
+          if [ -n "$CLOUDSQL" ]; then args+=(--add-cloudsql-instances "$CLOUDSQL"); fi
+
+          if [ -n "${GCS_BUCKET:-}" ]; then
+            # Cờ mount-options của GCSFuse, phân tách bằng dấu chấm phẩy (không có gạch đầu dòng). uid/gid 1000 = user `node` trong image.
+            mount_opts="${GCS_MOUNT_OPTIONS:-uid=1000;gid=1000;file-mode=664;dir-mode=775;implicit-dirs}"
+            args+=(--add-volume "name=storage,type=cloud-storage,bucket=${GCS_BUCKET},mount-options=${mount_opts}")
+            args+=(--add-volume-mount "volume=storage,mount-path=/data/storage")
+          fi
+
+          gcloud "${args[@]}"
+
+      # ------------------------------------------------------------------
+      # 7) Pha 2: lần deploy đầu chưa biết URL -> đọc URL rồi cập nhật BETTER_AUTH_URL / NEXT_PUBLIC_APP_URL
+      # ------------------------------------------------------------------
+      - name: Lấy URL dịch vụ và cập nhật URL công khai
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          if [ -z "$SERVICE_URL" ]; then echo "::error::Không đọc được URL của dịch vụ $SERVICE"; exit 1; fi
+          echo "SERVICE_URL=$SERVICE_URL" >> "$GITHUB_ENV"
+          if [ -z "${APP_URL:-}" ]; then
+            echo "Lần deploy đầu: đặt BETTER_AUTH_URL và NEXT_PUBLIC_APP_URL = $SERVICE_URL"
+            gcloud run services update "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+              --update-env-vars "BETTER_AUTH_URL=${SERVICE_URL},NEXT_PUBLIC_APP_URL=${SERVICE_URL}" --quiet
+          else
+            echo "BETTER_AUTH_URL / NEXT_PUBLIC_APP_URL đã được đặt từ ngay lần deploy này: $APP_URL"
+          fi
+
+      # ------------------------------------------------------------------
+      # 8) Smoke test + tóm tắt
+      # ------------------------------------------------------------------
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          # check PATH MONG_ĐỢI: thử lại tối đa ~2 phút (instance mới có thể còn đang khởi động).
+          check() {
+            local path="$1" want="$2" code="000" i
+            for i in $(seq 1 12); do
+              code="$(curl -sS -o /dev/null -m 30 -w '%{http_code}' "${SERVICE_URL}${path}" 2>/dev/null || true)"
+              if [ "$code" = "$want" ]; then echo "OK   ${path} -> ${code}"; return 0; fi
+              echo "Thử ${i}/12: ${path} -> ${code:-000} (mong đợi ${want})"
+              sleep 10
+            done
+            echo "::error::Smoke test thất bại: ${path} trả ${code:-000}, mong đợi ${want}"
+            return 1
+          }
+          check /login 200
+          check /api/notebooks 401   # chưa đăng nhập phải bị từ chối
+
+      - name: Tóm tắt
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## KBM Notebook đã triển khai"
+            echo
+            echo "- **URL:** ${SERVICE_URL}"
+            if [ -n "${APP_URL:-}" ] && [ "$APP_URL" != "$SERVICE_URL" ]; then echo "- **URL công khai cấu hình (APP_URL):** ${APP_URL}"; fi
+            echo "- **Dịch vụ:** \`${SERVICE}\` (vùng \`${REGION}\`, môi trường \`${DEPLOY_ENV}\`)"
+            echo "- **Image:** \`${IMAGE}\`"
+            echo "- **Job migrate:** \`${JOB}\` — thành công"
+            echo "- **Commit:** \`${GITHUB_SHA}\`"
+            echo "- **Smoke test:** \`/login\` = 200, \`/api/notebooks\` = 401"
+            echo "- **Lưu ý free tier:** instance tắt khi rảnh; request đầu tiên sau đó có thể chậm ~10–20 giây (cold start)."
+          } >> "$GITHUB_STEP_SUMMARY"
