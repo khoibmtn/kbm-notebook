@@ -4,7 +4,7 @@ import { ApiError } from "@/server/api/errors";
 import { canViewSource, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
 import { db } from "@/server/db";
-import { sourceChunks, sources, type Source } from "@/server/db/schema";
+import { notes, sourceChunks, sources, type Source } from "@/server/db/schema";
 import { env } from "@/server/env";
 import { enqueue } from "@/server/jobs/queue";
 import { getStorage } from "@/server/storage/local";
@@ -355,6 +355,9 @@ export async function deleteSource(row: Source): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.update(sources).set({ deletedAt: new Date() }).where(eq(sources.id, row.id));
     await tx.delete(sourceChunks).where(eq(sourceChunks.sourceId, row.id));
+    // Nguồn sinh từ ghi chú (P2): ghi chú không còn được coi là nguồn.
+    const noteId = row.metadata?.note_id;
+    if (typeof noteId === "string") await tx.update(notes).set({ isSource: false }).where(eq(notes.id, noteId));
   });
   emitSourceEvent({ ...row }, "deleted", { toNotebook: true });
 }
