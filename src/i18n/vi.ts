@@ -1,5 +1,6 @@
 /** Từ điển chính (tiếng Việt). Khoá ở đây là nguồn sự thật cho kiểu `MessageKey`; `en.ts` phải có cùng khoá. */
 import { chatVi } from "./modules/chat.vi";
+import { slidesVi } from "./modules/slides.vi";
 
 export const vi = {
   // --- team chat ---
@@ -130,6 +131,7 @@ export const vi = {
   "notifications.empty": "Chưa có thông báo nào",
 
   ...chatVi,
+  ...slidesVi,
   "app.name": "KBM Notebook",
   "app.description": "Học tập và cộng tác tri thức với AI: nguồn tài liệu, trò chuyện có trích dẫn, studio và chat nhóm.",
 
