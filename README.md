@@ -30,6 +30,8 @@ Next.js 16 (App Router, Turbopack) · React 19 · TypeScript strict · Tailwind 
 
 ## Bắt đầu nhanh
 
+Deploy 0 đồng lên Google Cloud Run (free tier) + Supabase bằng GitHub Actions — pipeline mới soạn, chưa chạy thử: [docs/08-trien-khai.md](docs/08-trien-khai.md#14-deploy-0-đồng-cloud-run-free-tier--supabase-github-actions), `scripts/gcp-bootstrap.sh`, `.github/workflows/deploy-cloud-run.yml`.
+
 Docker (khuyến nghị cho triển khai; xem [docs/08-trien-khai.md](docs/08-trien-khai.md)):
 
 ```bash

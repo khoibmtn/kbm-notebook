@@ -1,5 +1,7 @@
 # 08 · Triển khai production
 
+> **Không có máy chủ riêng / muốn 0 đồng?** Xem [mục 14: Deploy 0 đồng — Cloud Run free tier + Supabase](#14-deploy-0-đồng-cloud-run-free-tier--supabase-github-actions).
+
 Tài liệu này hướng dẫn đưa KBM Notebook lên máy chủ thật: PostgreSQL 16 + pgvector, ứng dụng (Docker hoặc chạy trực tiếp), reverse proxy có WebSocket, sao lưu, đăng nhập Google và khoá Gemini.
 
 > **Giới hạn kiểm chứng.** Môi trường phát triển của dự án không có Docker daemon, nên `Dockerfile` và `docker-compose.yml` **chưa được build/chạy thử ở đó**. Hai tệp đã được rà soát cẩn thận về cú pháp và thứ tự lệnh, và mọi lệnh bên trong (`pnpm build`, `node dist/migrate.js`, `node dist/server.js`) đã chạy được ngoài Docker. Lần build đầu tiên trên máy của bạn hãy kiểm tra theo mục [Kiểm chứng sau khi triển khai](#9-kiểm-chứng-sau-khi-triển-khai).
@@ -77,6 +79,7 @@ Cài Chromium cho PDF: `apt install chromium` (đặt `PW_CHROMIUM_PATH=/usr/bin
 ## 4. PostgreSQL 16 + pgvector
 
 - Dùng image `pgvector/pgvector:pg16` (đã gồm contrib: `pg_trgm`). Cài tay: `apt install postgresql-16 postgresql-16-pgvector`.
+- Đám mây: **Supabase** (PG 15/17, có sẵn `vector` + `pg_trgm`) và Cloud SQL PG 16 đều dùng được; `DATABASE_URL` có `sslmode=require` được hỗ trợ (bật TLS không xác minh CA). Xem mục 14.
 - Tài khoản ứng dụng cần quyền `CREATE EXTENSION` lần đầu (hoặc tạo trước bằng superuser): `CREATE EXTENSION vector; CREATE EXTENSION pg_trgm;`.
 - Chiều vector cố định 768 (`gemini-embedding-001`, cắt về 768). Đổi model embedding khác chiều cần migration riêng.
 - Tìm kiếm toàn cục dùng chỉ mục GIN (`tsvector` kiểu `simple`, `pg_trgm`) do migration `0002_community_search` tạo; tìm kiếm **phân biệt dấu tiếng Việt** (gõ "ty thể", không phải "ty the").
@@ -210,3 +213,157 @@ Sidecar Python/FastAPI chạy **trên máy của người dùng** (nơi đã đ�
 - Cổng 5432 của Postgres không mở ra Internet; app chỉ công bố trên loopback phía sau proxy.
 - `AI_PROVIDER=gemini` (không `mock`). `CONNECTORS_ALLOW_PRIVATE_HOSTS=false` (mặc định). Cấu hình SMTP (`SMTP_URL`) để email xác minh gửi được; chi tiết rà soát bảo mật: [docs/10-ra-soat-bao-mat.md](10-ra-soat-bao-mat.md). Reverse proxy phải ghi đè `X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Host`.
 - Trang công khai (`/a/…`, `/p/…`, `/s/…`) có `noindex`; sổ tay công khai chỉ lộ tiêu đề, mô tả, emoji và artifact công khai — không bao giờ lộ nguồn, ghi chú hay chat (có test).
+
+## 14. Deploy 0 đồng: Cloud Run free tier + Supabase (GitHub Actions)
+
+Mục này đưa KBM Notebook lên **Google Cloud Run** bằng GitHub Actions với cấu hình mặc định nhắm tới chi phí **0 đồng** (trong hạn mức miễn phí): Cloud Run scale-to-zero + Supabase free (Postgres + pgvector) + bucket GCS + Artifact Registry.
+
+> **Chưa chạy thử.** Pipeline (`.github/workflows/deploy-cloud-run.yml`), script `scripts/gcp-bootstrap.sh` và `render.yaml` được **soạn nhưng chưa từng được thực thi** trong môi trường phát triển (không có Docker daemon, không có thông tin đăng nhập GCP/Supabase/Render). Đã kiểm tra: cú pháp YAML, `bash -n`, `shellcheck`, từng cờ `gcloud` được phân tích bởi gcloud thật (ở chế độ không đăng nhập), và chạy thử logic các bước bash với `gcloud` giả. Những điểm còn **cần xác nhận** khi chạy thật được gom ở [14.9](#149-điểm-cần-xác-nhận-khi-chạy-thật).
+
+### 14.1 Kiến trúc
+
+```
+GitHub Actions ──docker build/push──▶ Artifact Registry (kbm, giữ 2 image mới nhất)
+      │
+      ├─ Cloud Run job  kbm-notebook-migrate  (node dist/migrate.js)  ─┐ chạy xong, thành công mới deploy tiếp
+      └─ Cloud Run service kbm-notebook (min 0 / max 1 instance, 1 vCPU, 1 GiB, gen2, session affinity)
+              ├─▶ Supabase Postgres (Session pooler :5432, TLS) — vector + pg_trgm
+              ├─▶ GCS bucket (gcsfuse) gắn tại /data/storage — tệp tải lên
+              └─▶ Gemini API (khoá miễn phí từ AI Studio)
+```
+
+- Dịch vụ chạy với `SKIP_MIGRATE=true`: migration đã chạy ở job riêng nên instance khởi động nhanh hơn và không có hai instance cùng migrate. (Chạy bằng Docker Compose thì `CMD` mặc định vẫn tự migrate.)
+- `--max-instances 1` còn có lợi: Socket.IO giữ phòng realtime trong bộ nhớ nên **một** instance là cấu hình đúng (xem mục 1).
+- Cổng: workflow deploy với `--port 3000`, Cloud Run đặt `PORT=3000` và `server.ts` đọc `PORT`; ứng dụng chạy bằng user `node` (không root).
+
+### 14.2 Bảng chi phí và giới hạn (ước tính tại thời điểm soạn — kiểm tra lại trang giá chính thức)
+
+| Thành phần | Chi phí kỳ vọng | Hạn mức miễn phí / giới hạn cần biết |
+|---|---|---|
+| Cloud Run | $0 nếu trong free tier | Mỗi tháng: 2 triệu request, 360.000 GiB-giây RAM, 180.000 vCPU-giây (tính phí theo request, vùng Tier 1). Với 1 vCPU/1 GiB ≈ **50 giờ instance bận/tháng**. **Mỗi kết nối WebSocket/SSE đang mở cũng tính là instance đang bận** → để tab mở cả ngày có thể ăn hết hạn mức. Có cold start (14.4). |
+| Supabase (free) | $0 | ~500 MB CSDL (mỗi đoạn văn bản có vector 768 chiều ≈ vài KB kể cả chỉ mục → cỡ hàng chục nghìn đoạn); **tạm dừng (pause) project sau ~7 ngày không hoạt động**; tối đa 2 project free mỗi tổ chức. |
+| Cloud Storage | $0 dưới 5 GB | 5 GB-tháng miễn phí **chỉ ở us-central1 / us-east1 / us-west1**; số thao tác Class A/B cũng có hạn mức miễn phí. Bucket mặc định đặt ở `us-central1`. |
+| Artifact Registry | ≈ $0 | 0,5 GB miễn phí. **Image ước tính ~0,6–0,9 GB nén** (xem 14.5) nên có thể vượt vài trăm MB → tối đa vài cent/tháng (~$0,10/GB-tháng). Cleanup policy giữ 2 image mới nhất. |
+| GitHub Actions | $0 | Repo private: 2.000 phút/tháng (Free); repo public: không giới hạn. Mỗi lần deploy ≈ 8–12 phút lần đầu, ngắn hơn khi cache lớp Docker (type=gha) còn. |
+| Gemini API (free) | $0 | Giới hạn RPM/RPD/token theo từng model, **thấp hơn** hạn mức của app (Chat 60 câu/10 phút) → có thể gặp HTTP 429 từ Gemini; dữ liệu gửi ở gói miễn phí có thể được Google dùng cải thiện sản phẩm — đừng nạp tài liệu nhạy cảm. Xem https://ai.google.dev/gemini-api/docs/rate-limits |
+
+**Lưu ý billing:** Cloud Run, Artifact Registry và Cloud Build **bắt buộc dự án GCP được gắn tài khoản thanh toán (thẻ)** dù mức dùng là $0. Hãy đặt **Budget alert** (Billing → Budgets & alerts, ví dụ $1) để được báo sớm; budget chỉ *cảnh báo*, không tự chặn chi phí. Nếu chủ dự án không muốn gắn thẻ, xem [14.7](#147-nếu-không-muốn-gắn-thẻ).
+
+**Nâng cấp có phí (không bật mặc định):** `MIN_INSTANCES=1` (giữ instance nóng, hết cold start; ước tính ~$13–55/tháng tuỳ chế độ tính phí), `CPU_ALWAYS_ON=true`, `MAX_INSTANCES`>1 (không khuyến nghị: realtime nằm trong bộ nhớ), Cloud SQL (`--with-cloudsql`, khoảng $25–60/tháng với `db-g1-small`/`db-custom-1-3840` + lưu trữ) — tất cả là **ước tính**.
+
+### 14.3 Các bước (theo đúng thứ tự)
+
+**(a) Chuẩn bị tài khoản**
+1. Tạo **dự án GCP** và **gắn billing** (console.cloud.google.com → Billing). Ghi lại `PROJECT_ID`.
+2. Tạo **project Supabase free** (supabase.com → New project; chọn vùng gần Cloud Run, ví dụ US East; đặt Database Password — nên dùng chữ+số để khỏi phải mã hoá URL).
+3. Tạo **khoá Gemini miễn phí** tại https://aistudio.google.com/apikey (không cần thẻ) → sẽ là secret `GEMINI_API_KEY`.
+4. Đẩy mã lên một repo GitHub của bạn (nhánh `main`).
+
+**(b) Chạy script bootstrap** (máy có `gcloud` + `openssl`, hoặc Cloud Shell)
+```bash
+gcloud auth login
+PROJECT_ID=<id-dự-án> ./scripts/gcp-bootstrap.sh          # mặc định REGION=us-central1, KHÔNG tạo Cloud SQL
+```
+Script bật API (run, artifactregistry, storage, iam, cloudresourcemanager), tạo repo Artifact Registry `kbm` + cleanup policy, bucket `<PROJECT_ID>-kbm-storage` (lifecycle dọn rác, chặn truy cập công khai), service account `kbm-deployer` (cho GitHub) và `kbm-runtime` (cho Cloud Run), khoá JSON ở `./.gcp/deployer-key.json`, sinh `BETTER_AUTH_SECRET`/`APP_ENCRYPTION_KEY`, rồi **in ra đúng danh sách secrets/variables** (cũng lưu ở `./.gcp/github-settings.txt`). Chạy lại nhiều lần an toàn. Thư mục `.gcp/` đã nằm trong `.gitignore` — **đừng commit**, và sao lưu `APP_ENCRYPTION_KEY` (mất khoá = mất các khoá API đã mã hoá).
+
+**(c) Lấy `DATABASE_URL` từ Supabase** — Dashboard → nút **Connect** → tab *Session pooler* (cổng **5432**), dạng:
+```
+postgresql://postgres.<PROJECT_REF>:<MẬT_KHẨU>@aws-0-<vùng>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+- Dùng **Session pooler (5432)**, không dùng *Transaction pooler (6543)*: ứng dụng dùng `FOR UPDATE SKIP LOCKED`, khoá advisory và transaction nhiều câu lệnh. *Direct connection* (`db.<ref>.supabase.co`) ở gói free chỉ có IPv6 mà Cloud Run ra Internet bằng IPv4 → thường không kết nối được.
+- Ứng dụng hiểu `sslmode=require` (bật TLS nhưng **không** xác minh chuỗi chứng chỉ, vì Supabase dùng CA riêng) — xem `src/server/db/connection.ts`. Mật khẩu chứa ký tự đặc biệt phải mã hoá %-encode (`@` → `%40`).
+- **Không cần bật extension thủ công**: migration chạy `CREATE EXTENSION IF NOT EXISTS vector` và `pg_trgm`. Nếu bị từ chối quyền, bật trong Dashboard → Database → Extensions (mục 14.8). Schema không dùng tính năng riêng của PostgreSQL 16 (chỉ `gen_random_uuid()`, GIN, HNSW) nên chạy được trên PG 15/17 của Supabase.
+
+**(d) Đặt GitHub secrets/variables** (Repo → Settings → Secrets and variables → Actions)
+
+| Loại | Tên | Giá trị |
+|---|---|---|
+| Secret | `GCP_SA_KEY` | Toàn bộ nội dung `./.gcp/deployer-key.json` |
+| Secret | `DATABASE_URL` | Chuỗi Supabase ở bước (c) |
+| Secret | `BETTER_AUTH_SECRET` | Do script sinh |
+| Secret | `APP_ENCRYPTION_KEY` | Do script sinh (64 ký tự hex) |
+| Secret | `GEMINI_API_KEY` | Khoá AI Studio (tuỳ chọn nhưng nên có; không có thì mỗi người dùng tự nhập khoá ở Cài đặt → AI) |
+| Secret (tuỳ chọn) | `SMTP_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Như mục 5 và 10 |
+| Secret (chỉ khi dùng Cloud SQL) | `CLOUDSQL_INSTANCE` | `PROJECT:REGION:kbm-pg` |
+| Secret (tuỳ chọn, thay cho `GCP_SA_KEY`) | `GCP_WIF_PROVIDER`, `GCP_SA_EMAIL` | Workload Identity, xem 14.6 |
+| Variable | `GCP_PROJECT_ID` | ID dự án |
+| Variable | `GCP_REGION` | `us-central1` (mặc định nếu bỏ trống) |
+| Variable | `GCS_BUCKET` | Tên bucket do script in ra |
+| Variable | `AUTH_REQUIRE_EMAIL_VERIFICATION` | `false` cho bản demo (mặc định của workflow) |
+| Variable (tuỳ chọn) | `APP_URL`, `MIN_INSTANCES`, `MAX_INSTANCES`, `CPU_ALWAYS_ON`, `GCS_MOUNT_OPTIONS`, `TRUSTED_ORIGINS`, `EMAIL_FROM`, `MAX_UPLOAD_MB`, `MAX_NOTEBOOK_STORAGE_MB`, `MAX_UPLOAD_REQUEST_MB`, `DB_POOL_MAX`, `RUNTIME_SA`, `AR_REPO`, `AUTO_DEPLOY` | Mặc định: min 0, max 1, `CPU_ALWAYS_ON=false`, `DB_POOL_MAX=5`. `AUTO_DEPLOY=false` tắt tự deploy khi push. |
+
+`GCP_PROJECT_ID`/`GCP_REGION` chấp nhận cả variable lẫn secret. Có thể đặt trong *Environment* `production` thay vì cấp repo.
+
+**(e) Chạy workflow** — Actions → **Deploy Cloud Run** → *Run workflow* (ô `environment` để `production`). Workflow tự chạy khi push lên `main` (trừ thay đổi chỉ ở `docs/**`, `*.md`, `bridge/**`); khi chưa đặt đủ secrets nó dừng với thông báo rõ tên mục còn thiếu. Thứ tự: kiểm tra cấu hình → đăng nhập GCP → build/push image → **job migrate** (phải thành công) → deploy dịch vụ → (lần đầu) cập nhật `BETTER_AUTH_URL`/`NEXT_PUBLIC_APP_URL` bằng URL dịch vụ → smoke test (`/login` = 200, `/api/notebooks` = 401). URL in ở *job summary*.
+- Dùng tên miền riêng? Đặt variable `APP_URL=https://tên-miền` để URL đúng ngay từ lần deploy đầu (Google OAuth redirect cũng dùng URL này).
+- Cloud Run có thể có hai URL cho cùng dịch vụ; chỉ URL được cấu hình (`BETTER_AUTH_URL`) chắc chắn qua được kiểm tra Origin của đăng nhập. Dùng URL trong summary, hoặc thêm URL kia vào variable `TRUSTED_ORIGINS`.
+
+**(f) Lần đăng nhập đầu**
+- Mở URL → *Đăng ký* tài khoản. Bản demo đặt `AUTH_REQUIRE_EMAIL_VERIFICATION=false` nên dùng được ngay không cần email; hệ quả: email chưa xác minh vẫn dùng làm danh tính cho lời mời/chia sẻ theo email — chỉ nên cho người tin cậy dùng.
+- Muốn bật xác minh email: thêm secret `SMTP_URL` (Gmail app password, Brevo, Resend… đều có gói miễn phí), đặt variable `AUTH_REQUIRE_EMAIL_VERIFICATION=true`, chạy lại workflow.
+- Không có `GEMINI_API_KEY`: vào Cài đặt → AI để nhập khoá riêng.
+
+### 14.4 Hành vi của free tier — cần biết trước
+
+- **Cold start:** khi không có ai dùng ~15 phút instance bị tắt; request đầu tiên sau đó mất cỡ **10–20 giây** (ước tính; Node + Next + kết nối CSDL). `--cpu-boost` giúp rút ngắn. `MIN_INSTANCES=1` là nâng cấp có phí.
+- **Job worker và Socket.IO chỉ chạy khi instance còn sống.** Với tính phí theo request, CPU bị hạn chế ngoài lúc xử lý request: nguồn mới tải lên (ingest) và xuất file tiến triển chủ yếu khi trang đang mở (trình duyệt liên tục gọi API/WebSocket). Đóng tab ngay sau khi tải lên có thể làm việc xử lý dừng/chậm cho tới lần mở sau. Đặt `CPU_ALWAYS_ON=true` (có thể mất phí) nếu cần xử lý nền đáng tin cậy.
+- WebSocket (`/socket.io`) chạy trực tiếp trên Cloud Run (không cần cấu hình proxy). Request tối đa 3600 giây (`--timeout 3600`) — hết hạn thì client tự kết nối lại. `--session-affinity` giữ người dùng trên cùng instance (với max 1 instance thì không ảnh hưởng).
+- **PDF:** xuất bằng Chromium trong image. **Đường dự phòng LibreOffice (DOCX→PDF) không có** trên Cloud Run vì image không cài LibreOffice (giảm dung lượng). Chromium trong 1 GiB RAM đủ cho tài liệu thường; tài liệu rất lớn có thể hết bộ nhớ → tăng bộ nhớ (có phí) hoặc xuất PPTX/DOCX.
+- Tệp tải lên nằm ở bucket GCS gắn bằng gcsfuse: chậm hơn đĩa cục bộ, không có khoá/ghi nối tiếp như đĩa thật. Chưa đặt `GCS_BUCKET` thì tệp ở đĩa tạm của instance và **mất khi instance bị tắt** (workflow cảnh báo).
+- **Supabase tạm dừng sau ~7 ngày không hoạt động.** Khi đó ứng dụng báo lỗi kết nối CSDL. Khôi phục: Supabase Dashboard → chọn project → **Restore project** (dữ liệu được giữ cho phép khôi phục trong một khoảng thời gian — theo tài liệu Supabase lúc soạn là 90 ngày, cần kiểm tra lại); đợi vài phút rồi mở lại ứng dụng. Mỗi lần có người đăng nhập/dùng ứng dụng sẽ tính là hoạt động; nếu muốn chắc chắn, vào ứng dụng ít nhất mỗi tuần.
+
+### 14.5 Image và Artifact Registry
+
+- Dockerfile đa tầng; bản dành cho Cloud Run **không có LibreOffice** (`WITH_LIBREOFFICE` mặc định `false`, workflow không truyền), đã bỏ `.next/cache` (~240 MB trong bản build thử).
+- **Ước tính kích thước (không build được ở đây):** node:22-bookworm-slim ≈ 230 MB + Chromium và thư viện ≈ 400–500 MB + phông Noto/Liberation/emoji ≈ 150 MB + `node_modules` production ≈ 880 MB (đo bằng `pnpm install --prod`) + `.next`/`dist` ≈ 90 MB → **~1,8–2,0 GB chưa nén, khoảng 0,6–0,9 GB trong Artifact Registry** (nén gzip). Có thể vượt 0,5 GB miễn phí một chút; các lớp dùng chung giữa các phiên bản chỉ tính một lần.
+- Muốn nhỏ hơn: thay `chromium` bằng headless shell của Playwright, bỏ các gói nhị phân musl trong `node_modules/.pnpm` (không dùng trên Debian) — chưa làm vì không kiểm chứng được ở đây.
+- Cleanup policy (script đặt): giữ 2 phiên bản mới nhất, xoá phần còn lại. Cloud Run giữ bản sao image của revision đang chạy.
+
+### 14.6 Workload Identity Federation (tuỳ chọn, thay cho khoá JSON)
+
+Nhiều tổ chức GCP mới bật policy `iam.disableServiceAccountKeyCreation` (không tạo được khoá JSON). Khi đó:
+```bash
+P=<project-id>; NUM=$(gcloud projects describe $P --format='value(projectNumber)'); REPO=<owner>/<repo>
+gcloud iam workload-identity-pools create github --location=global --project=$P
+gcloud iam workload-identity-pools providers create-oidc github-provider --location=global --project=$P \
+  --workload-identity-pool=github --issuer-uri=https://token.actions.githubusercontent.com \
+  --attribute-mapping='google.subject=assertion.sub,attribute.repository=assertion.repository' \
+  --attribute-condition="assertion.repository=='$REPO'"
+gcloud iam service-accounts add-iam-policy-binding kbm-deployer@$P.iam.gserviceaccount.com --project=$P \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+```
+Đặt secret `GCP_WIF_PROVIDER=projects/<NUM>/locations/global/workloadIdentityPools/github/providers/github-provider` và `GCP_SA_EMAIL=kbm-deployer@<P>.iam.gserviceaccount.com`, bỏ secret `GCP_SA_KEY`. (Các lệnh trên đã được gcloud phân tích cú pháp nhưng chưa chạy thật.)
+
+### 14.7 Nếu không muốn gắn thẻ
+
+Cloud Run luôn cần billing. Các lựa chọn khác:
+1. **Chạy trên máy của bạn** bằng Docker Compose (mục 2): $0 thật sự, không cần cloud; dùng `ngrok`/Cloudflare Tunnel nếu cần chia sẻ tạm.
+2. **Render (gói free)** — tệp `render.yaml` ở gốc repo (Blueprint, DB vẫn là Supabase). **Chưa thử** từ môi trường phát triển. Gói free chỉ **512 MB RAM** (Next.js + Chromium dễ thiếu, xuất PDF có thể bị OOM), tự ngủ sau ~15 phút, **không có đĩa bền** (tệp tải lên mất khi khởi động lại), không có pre-deploy command nên migration chạy lúc khởi động (CMD mặc định của Dockerfile). Dùng cho demo rất nhẹ.
+
+### 14.8 Xử lý sự cố
+
+| Triệu chứng | Nguyên nhân / cách xử lý |
+|---|---|
+| Job migrate lỗi `extension "vector" is not available` hoặc `permission denied to create extension` | Supabase: Dashboard → Database → Extensions → bật `vector` (và `pg_trgm`), chạy lại workflow. Cloud SQL: user tạo bằng gcloud đã thuộc `cloudsqlsuperuser`; nếu vẫn lỗi chạy `CREATE EXTENSION vector; CREATE EXTENSION pg_trgm;` bằng user `postgres`. Migration `0000_init.sql` và `migrate.ts` đều có `CREATE EXTENSION IF NOT EXISTS`, nên thường **không phải chạy tay**. |
+| `ENETUNREACH` / timeout khi kết nối Supabase | Đang dùng *Direct connection* (IPv6). Chuyển sang Session pooler `…pooler.supabase.com:5432`. |
+| `Tenant or user not found` | Với pooler, user phải là `postgres.<PROJECT_REF>` (không phải `postgres`); kiểm tra mật khẩu/%-encode. |
+| `SELF_SIGNED_CERT_IN_CHAIN` | URL thiếu `sslmode=require` (hoặc dùng `verify-full` mà không có CA). Thêm `?sslmode=require`. |
+| Ứng dụng báo lỗi CSDL sau một thời gian không dùng | Project Supabase bị pause — khôi phục theo 14.4. |
+| Cloud SQL: `connect ENOENT /cloudsql/...` | Thiếu `--add-cloudsql-instances` (secret `CLOUDSQL_INSTANCE` không đặt và không suy ra được từ URL) hoặc `kbm-runtime` thiếu `roles/cloudsql.client`; URL phải có dạng `postgres://kbm:PASS@/kbm_notebook?host=/cloudsql/PROJECT:REGION:kbm-pg`. |
+| `EACCES`/`permission denied` khi tải tệp lên | Quyền ghi của volume gcsfuse: `kbm-runtime` cần `roles/storage.objectAdmin` trên bucket; user `node` có UID/GID 1000 nên mount-options mặc định là `uid=1000;gid=1000;file-mode=664;dir-mode=775;implicit-dirs` — chỉnh bằng variable `GCS_MOUNT_OPTIONS`. |
+| `--allow-unauthenticated` bị từ chối | Tổ chức bật policy chặn `allUsers` (Domain Restricted Sharing). Nhờ quản trị viên nới policy cho dự án. |
+| Smoke test `/api/notebooks` không trả 401 | Kiểm tra log: `gcloud run services logs read kbm-notebook --region us-central1`. Nếu `/login` 5xx, thường do thiếu/sai biến môi trường (xem log "Cấu hình môi trường không hợp lệ"). |
+| Realtime/chat nhóm không cập nhật | Chỉ đúng khi 1 instance (`MAX_INSTANCES=1`). WebSocket chạy trực tiếp trên Cloud Run; session affinity chỉ là "cố gắng", không thay cho adapter Redis. |
+| Khoá JSON không tạo được | Dùng Workload Identity (14.6). |
+| Không thấy job migrate chạy | `gcloud run jobs executions list --job kbm-notebook-migrate --region us-central1`, log ở Cloud Logging. |
+
+### 14.9 Điểm cần xác nhận khi chạy thật
+
+1. Tính năng gắn bucket GCS (`--add-volume type=cloud-storage`, `mount-options` dạng `uid=1000;gid=1000;…`) — cú pháp cờ đã được gcloud chấp nhận, nhưng **quyền sở hữu tệp, tương thích gcsfuse với `rename`/`.part` của `LocalDiskStorage`, và việc Cloud Run có chấp nhận các tuỳ chọn uid/gid/mode hay không** chưa được thử. Nếu ghi tệp lỗi: bỏ variable `GCS_BUCKET` (tệp tạm thời) hoặc chỉnh `GCS_MOUNT_OPTIONS`.
+2. `docker/build-push-action` + `gcloud auth configure-docker` (credential helper) cho Artifact Registry; cache `type=gha`.
+3. `gcloud artifacts repositories set-cleanup-policies … --no-dry-run` (cờ đã được chấp nhận; hành vi xoá thật chưa thử) và lifecycle bucket.
+4. Hạn mức miễn phí và giá (Cloud Run, Supabase, Gemini, Artifact Registry) thay đổi theo thời gian; con số ở đây là ước tính khi soạn tài liệu.
+5. Supabase: `CREATE EXTENSION vector` có thể đặt extension ở schema `public` hay `extensions` — migration chỉ gọi `IF NOT EXISTS`; nếu truy vấn báo không thấy kiểu `vector`, kiểm tra `search_path`.
+6. Thời gian cold start, mức RAM thực tế của Chromium trong 1 GiB, và kích thước image thực — cần đo.
+7. Cờ `--cpu-throttling` mặc định (xử lý nền chỉ khi có request) có thể làm ingest chậm; xem 14.4.
