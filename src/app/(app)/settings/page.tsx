@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { AppHeader } from "@/components/shared/app-header";
 import { getT } from "@/i18n/server";
-import { ARTIFACT_TYPES, DEFAULT_PROMPTS } from "@/server/ai/prompts/defaults";
+import { ARTIFACT_TYPES, CHAT_PROMPT_KEY, DEFAULT_CHAT_PROMPT, DEFAULT_PROMPTS } from "@/server/ai/prompts/defaults";
 import { requirePageSession } from "@/server/auth/page-session";
 import { getAiSettings, getProfileSettings, getPrompts } from "@/server/settings/service";
 
@@ -19,9 +19,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     getAiSettings(user.id),
     getPrompts(user.id),
   ]);
-  const defaults = Object.fromEntries(
-    ARTIFACT_TYPES.map((type) => [type, { system: DEFAULT_PROMPTS[type].system, user: DEFAULT_PROMPTS[type].user }]),
-  );
+  const defaults: Record<string, { system: string; user: string }> = {
+    [CHAT_PROMPT_KEY]: { system: DEFAULT_CHAT_PROMPT.system, user: DEFAULT_CHAT_PROMPT.user },
+    ...Object.fromEntries(ARTIFACT_TYPES.map((type) => [type, { system: DEFAULT_PROMPTS[type].system, user: DEFAULT_PROMPTS[type].user }])),
+  };
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader user={user} />
@@ -33,7 +34,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           ai={ai}
           prompts={prompts}
           promptDefaults={defaults}
-          artifactTypes={[...ARTIFACT_TYPES]}
+          artifactTypes={[CHAT_PROMPT_KEY, ...ARTIFACT_TYPES]}
         />
       </main>
     </div>

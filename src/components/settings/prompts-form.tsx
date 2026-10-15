@@ -107,7 +107,7 @@ export function PromptsForm({
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editing ? t(`artifact.${editing}` as MessageKey) : ""}</DialogTitle>
-            <DialogDescription>{t("settings.prompts.editHint")}</DialogDescription>
+            <DialogDescription>{editing === "chat" ? t("chat.prompts.hint") : t("settings.prompts.editHint")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="pr-system">{t("settings.prompts.system")}</Label>

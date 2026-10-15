@@ -1,4 +1,5 @@
-import { MessageSquare, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { MainTabs } from "@/components/notebook/main-tabs";
 import { NotebookWorkspace } from "@/components/notebook/notebook-workspace";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SourcesPanel } from "@/components/sources/sources-panel";
@@ -10,9 +11,7 @@ export default async function NotebookHomePage() {
   return (
     <NotebookWorkspace
       sources={<SourcesPanel maxUploadMb={env().MAX_UPLOAD_MB} />}
-      main={
-        <EmptyState icon={MessageSquare} title={t("chat.empty.title")} description={t("chat.empty.description")} badge={t("module.comingSoon")} />
-      }
+      main={<MainTabs />}
       studio={
         <EmptyState icon={Sparkles} title={t("studio.empty.title")} description={t("module.comingSoon.description")} badge={t("module.comingSoon")} />
       }
