@@ -43,7 +43,7 @@ export function TipBar() {
   return (
     <div role="status" className="flex shrink-0 items-start gap-3 border-b bg-primary/5 px-4 py-2.5 text-sm" data-testid="tip-bar">
       <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-      <p className="min-w-0 flex-1">
+      <p className="min-w-0 line-clamp-4 flex-1 sm:line-clamp-none">
         <span className="font-medium">{t("tip.title")}: </span>
         {t("tip.body")}
       </p>

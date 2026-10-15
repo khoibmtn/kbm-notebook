@@ -1,8 +1,10 @@
 "use client";
 import { BookOpenText, Compass } from "lucide-react";
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
 import { ArtifactSocial } from "@/components/community/artifact-social";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactDetailDto } from "@/lib/artifacts/meta";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
@@ -23,6 +25,13 @@ type Props = {
 /** Trang chỉ đọc cho artifact chia sẻ (`/s/[token]`, `/a/[artifactId]`): không có chỉnh sửa, không lộ nguồn gốc. */
 export function SharedArtifactView({ artifact, signedIn, notebookId, shareToken, social }: Props) {
   const t = useT();
+  // Trình xem theo loại (slide, infographic, sơ đồ…) đo kích thước/văn bản ở trình duyệt và dùng id động (dnd-kit):
+  // chỉ dựng sau khi mount để HTML từ server không bao giờ lệch với client (hydration).
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const { locale } = useLocale();
   const Icon = TYPE_ICONS[artifact.type];
   return (
@@ -56,7 +65,9 @@ export function SharedArtifactView({ artifact, signedIn, notebookId, shareToken,
         )}
       </header>
       <main className="flex-1 p-4 sm:p-6">
-        {artifact.content ? (
+        {artifact.content && !mounted ? (
+          <Skeleton className="mx-auto h-64 w-full max-w-4xl" aria-busy />
+        ) : artifact.content ? (
           <ArtifactBody artifactId={artifact.id} type={artifact.type} content={artifact.content} readOnly notebookId={notebookId} handlers={{ shareToken }} />
         ) : (
           <p className="py-16 text-center text-sm text-muted-foreground">{t("studio.noContent")}</p>

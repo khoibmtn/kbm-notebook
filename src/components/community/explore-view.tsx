@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CreateGroupDialog } from "@/components/community/create-group-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
+import { NotebookCover } from "@/components/shared/notebook-cover";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { NativeSelect } from "@/components/studio/native-select";
 import { STUDIO_TYPES, TYPE_ICONS, TYPE_NAME_KEY } from "@/components/studio/type-meta";
@@ -19,7 +20,6 @@ import { api } from "@/lib/api-client";
 import type { ExploreArtifactDto, ExploreNotebookDto, ExploreSort, GroupSummaryDto, Paged } from "@/lib/community";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { DEFAULT_COVER_COLOR } from "@/lib/notebook-colors";
 import type { ArtifactTypeName } from "@/lib/artifacts/content";
 
 export type ExploreTab = "artifacts" | "notebooks" | "groups";
@@ -107,7 +107,7 @@ function LoadMore({ list, t }: { list: { hasMore: boolean; loading: boolean; err
 
 function CardSkeletons() {
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy>
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy>
       {Array.from({ length: 6 }).map((_, i) => (
         <li key={i}>
           <Skeleton className="h-36 w-full rounded-xl" />
@@ -165,9 +165,7 @@ function NotebookCard({ n }: { n: ExploreNotebookDto }) {
   return (
     <Link href={`/p/${n.slug}`} className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="explore-notebook-card">
       <Card className="h-full gap-0 overflow-hidden p-0 transition-shadow group-hover:shadow-md">
-        <div className="flex h-16 items-end px-4 pb-2 text-2xl" style={{ backgroundColor: n.coverColor ?? DEFAULT_COVER_COLOR }}>
-          <span aria-hidden>{n.emoji ?? "📓"}</span>
-        </div>
+        <NotebookCover color={n.coverColor} emoji={n.emoji} className="h-16 px-4 pb-2 text-2xl" />
         <div className="space-y-2 p-4">
           <h3 className="line-clamp-1 font-medium">{n.title}</h3>
           <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">{n.description}</p>
@@ -291,9 +289,9 @@ export function ExploreView({ initialTab }: { initialTab: ExploreTab }) {
 
       {tab === "artifacts" && (
         <ListBody list={artifacts} t={t} empty={{ icon: Globe, title: "community.empty.artifacts.title", description: "community.empty.artifacts.description" }} hasFilter={hasFilter}>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-artifacts">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-artifacts">
             {artifacts.items.map((a) => (
-              <li key={a.id}>
+              <li key={a.id} className="min-w-0">
                 <ArtifactCard a={a} />
               </li>
             ))}
@@ -302,9 +300,9 @@ export function ExploreView({ initialTab }: { initialTab: ExploreTab }) {
       )}
       {tab === "notebooks" && (
         <ListBody list={notebooks} t={t} empty={{ icon: BookOpen, title: "community.empty.notebooks.title", description: "community.empty.notebooks.description" }} hasFilter={hasFilter}>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-notebooks">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-notebooks">
             {notebooks.items.map((n) => (
-              <li key={n.id}>
+              <li key={n.id} className="min-w-0">
                 <NotebookCard n={n} />
               </li>
             ))}
@@ -313,9 +311,9 @@ export function ExploreView({ initialTab }: { initialTab: ExploreTab }) {
       )}
       {tab === "groups" && (
         <ListBody list={groups} t={t} empty={{ icon: UsersRound, title: "community.empty.groups.title", description: "community.empty.groups.description" }} hasFilter={hasFilter}>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-groups">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="explore-groups">
             {groups.items.map((g) => (
-              <li key={g.id}>
+              <li key={g.id} className="min-w-0">
                 <GroupCard g={g} />
               </li>
             ))}

@@ -242,7 +242,7 @@ export function SlideRail({
         aria-label={t("slides.rail.label")}
         data-testid="slide-list"
       >
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext id="slide-rail-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={slides.map((s) => s.id)} strategy={horizontal ? horizontalListSortingStrategy : verticalListSortingStrategy}>
             {slides.map((s, i) => (
               <RailItem

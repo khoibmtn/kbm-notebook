@@ -159,7 +159,7 @@ export function GroupView({ group, ownerName, members, notebooks, meId }: Props)
         {notebooks.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("community.group.notebooks.empty")}</p>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="group-notebooks">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="group-notebooks">
             {notebooks.map((n) => (
               <li key={n.id}>
                 <Card className="h-full gap-1 p-4">

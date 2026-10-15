@@ -3,13 +3,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { JoinRequestButton, type JoinState } from "@/components/community/join-request-button";
 import { EmptyState } from "@/components/shared/empty-state";
+import { NotebookCover } from "@/components/shared/notebook-cover";
 import { TYPE_ICONS, TYPE_NAME_KEY } from "@/components/studio/type-meta";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getLocale, getT } from "@/i18n/server";
 import { formatRelative } from "@/lib/format";
-import { DEFAULT_COVER_COLOR } from "@/lib/notebook-colors";
 import { getSession } from "@/server/auth/session";
 import { memberRoleOf } from "@/server/community/explore";
 import { getMyJoinRequestStatus } from "@/server/community/join-requests";
@@ -79,9 +79,7 @@ export default async function PublicNotebookPage({ params }: { params: Promise<P
       {header}
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 px-4 py-6 sm:px-6">
         <section className="overflow-hidden rounded-xl border bg-background">
-          <div className="flex h-24 items-end px-6 pb-3 text-4xl" style={{ backgroundColor: nb.coverColor ?? DEFAULT_COVER_COLOR }}>
-            <span aria-hidden>{nb.emoji ?? "📓"}</span>
-          </div>
+          <NotebookCover color={nb.coverColor} emoji={nb.emoji} className="h-24 px-6 pb-3 text-4xl" />
           <div className="space-y-4 p-6">
             <div className="space-y-1">
               <h1 className="break-words text-2xl font-semibold" data-testid="public-title">
@@ -104,7 +102,7 @@ export default async function PublicNotebookPage({ params }: { params: Promise<P
           {nb.artifacts.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("community.public.noArtifacts")}</p>
           ) : (
-            <ul className="grid gap-3 sm:grid-cols-2" data-testid="public-artifacts">
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="public-artifacts">
               {nb.artifacts.map((a) => {
                 const Icon = TYPE_ICONS[a.type];
                 return (
