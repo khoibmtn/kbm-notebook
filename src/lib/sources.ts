@@ -166,3 +166,29 @@ export function parseViewerHighlight(params: URLSearchParams): ViewerHighlight {
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
+
+/** Khoảng ký tự cần tô sáng trong Source viewer: ưu tiên chunk (theo id), dự phòng `start/end`. */
+export function resolveHighlightRange(
+  chunks: Pick<SourceChunkRef, "id" | "startChar" | "endChar">[],
+  hl: ViewerHighlight,
+): { start: number; end: number } | null {
+  if (hl.chunk) {
+    const c = chunks.find((x) => x.id === hl.chunk);
+    if (c && c.endChar > c.startChar) return { start: c.startChar, end: c.endChar };
+  }
+  if (hl.start != null && hl.end != null && hl.end > hl.start) return { start: hl.start, end: hl.end };
+  return null;
+}
+
+/** Cắt văn bản của một trang (vị trí tuyệt đối [pageStart, pageEnd)) thành trước/đoạn tô sáng/sau; null nếu không giao nhau. */
+export function splitForHighlight(
+  text: string,
+  pageStart: number,
+  range: { start: number; end: number } | null,
+): { before: string; mark: string; after: string } | null {
+  if (!range) return null;
+  const s = Math.max(range.start - pageStart, 0);
+  const e = Math.min(range.end - pageStart, text.length);
+  if (e <= s) return null;
+  return { before: text.slice(0, s), mark: text.slice(s, e), after: text.slice(e) };
+}

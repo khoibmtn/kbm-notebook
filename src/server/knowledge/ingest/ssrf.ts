@@ -98,7 +98,7 @@ function hostnameForIp(hostname: string): string {
  * Chặn SSRF: chỉ http/https, không kèm user:pass, host không phải IP riêng/loopback và DNS không trỏ vào dải riêng.
  * Trả URL đã parse. Ném `IngestError` (permanent) khi bị chặn.
  */
-export async function assertPublicUrl(raw: string): Promise<URL> {
+export async function assertPublicUrl(raw: string, isBlocked: (ip: string) => boolean = isPrivateIp): Promise<URL> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -110,7 +110,7 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   const host = hostnameForIp(url.hostname);
   if (!host) throw new IngestError("URL không hợp lệ");
   if (isIP(host)) {
-    if (isPrivateIp(host)) throw new IngestError("Không cho phép truy cập địa chỉ nội bộ");
+    if (isBlocked(host)) throw new IngestError("Không cho phép truy cập địa chỉ nội bộ");
     return url;
   }
   if (BLOCKED_HOST_RE.test(host)) throw new IngestError("Không cho phép truy cập địa chỉ nội bộ");
@@ -120,7 +120,7 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   } catch {
     throw new IngestError("Không phân giải được tên miền", { permanent: false });
   }
-  if (addrs.length === 0 || addrs.some((a) => isPrivateIp(a.address))) {
+  if (addrs.length === 0 || addrs.some((a) => isBlocked(a.address))) {
     throw new IngestError("Không cho phép truy cập địa chỉ nội bộ");
   }
   return url;
@@ -139,10 +139,15 @@ export type FetchedPage = { finalUrl: string; contentType: string; body: Buffer;
 type LookupCb = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
 
 /** `lookup` cho http(s).request: phân giải rồi từ chối nếu có địa chỉ riêng (chống DNS rebinding). */
-function guardedLookup(hostname: string, options: { all?: boolean; family?: number | string }, cb: LookupCb): void {
+function guardedLookup(
+  isBlocked: (ip: string) => boolean,
+  hostname: string,
+  options: { all?: boolean; family?: number | string },
+  cb: LookupCb,
+): void {
   dnsLookup(hostname, { all: true, verbatim: true, family: typeof options.family === "number" ? options.family : 0 }, (err, addrs) => {
     if (err) return cb(err, "", 0);
-    if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) {
+    if (!addrs.length || addrs.some((a) => isBlocked(a.address))) {
       const e: NodeJS.ErrnoException = new Error("Không cho phép truy cập địa chỉ nội bộ");
       e.code = "EBLOCKED";
       return cb(e, "", 0);
@@ -160,7 +165,12 @@ function decodeStream(res: http.IncomingMessage): Readable {
   return res;
 }
 
-function requestOnce(url: URL, timeoutMs: number, maxBytes: number): Promise<{ res: http.IncomingMessage; body: Buffer }> {
+function requestOnce(
+  url: URL,
+  timeoutMs: number,
+  maxBytes: number,
+  isBlocked: (ip: string) => boolean,
+): Promise<{ res: http.IncomingMessage; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const lib = url.protocol === "https:" ? https : http;
     let settled = false;
@@ -174,7 +184,8 @@ function requestOnce(url: URL, timeoutMs: number, maxBytes: number): Promise<{ r
       url,
       {
         method: "GET",
-        lookup: guardedLookup as unknown as http.RequestOptions["lookup"],
+        lookup: ((h: string, o: { all?: boolean; family?: number | string }, cb: LookupCb) =>
+          guardedLookup(isBlocked, h, o, cb)) as unknown as http.RequestOptions["lookup"],
         headers: {
           "User-Agent": FETCH_USER_AGENT,
           Accept: "text/html,application/xhtml+xml,application/pdf,text/plain,application/json;q=0.9,*/*;q=0.5",
@@ -225,15 +236,22 @@ function requestOnce(url: URL, timeoutMs: number, maxBytes: number): Promise<{ r
  */
 export async function safeFetch(
   rawUrl: string,
-  opts: { timeoutMs?: number; maxBytes?: number; maxRedirects?: number } = {},
+  opts: {
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+    /** Chỉ dùng trong test: thay luật chặn IP (mặc định chặn dải riêng/loopback). */
+    isBlockedIp?: (ip: string) => boolean;
+  } = {},
 ): Promise<FetchedPage> {
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
   const maxBytes = opts.maxBytes ?? FETCH_MAX_BYTES;
+  const isBlocked = opts.isBlockedIp ?? isPrivateIp;
   const deadline = Date.now() + timeoutMs;
-  let url = await assertPublicUrl(rawUrl);
+  let url = await assertPublicUrl(rawUrl, isBlocked);
   for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
     const remaining = Math.max(1000, deadline - Date.now());
-    const { res, body } = await requestOnce(url, remaining, maxBytes);
+    const { res, body } = await requestOnce(url, remaining, maxBytes, isBlocked);
     const status = res.statusCode ?? 0;
     if (status >= 300 && status < 400 && res.headers.location) {
       let next: string;
@@ -242,7 +260,7 @@ export async function safeFetch(
       } catch {
         throw new IngestError("Chuyển hướng không hợp lệ");
       }
-      url = await assertPublicUrl(next);
+      url = await assertPublicUrl(next, isBlocked);
       continue;
     }
     if (status < 200 || status >= 300) {
