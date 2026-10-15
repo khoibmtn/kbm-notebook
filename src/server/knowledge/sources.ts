@@ -22,6 +22,7 @@ import {
   type SourceTextPage,
   type SourceVisibility,
 } from "@/lib/sources";
+import { assertIngestBudget } from "./ingest/budget";
 import type { Span } from "./ingest/chunk";
 
 /** Payload của job `ingest_source`. */
@@ -253,6 +254,7 @@ export async function createSourceFromStoredFile(input: {
   /** Trộn vào `metadata` (vd. `driveFileId`). */
   metadata?: Record<string, unknown>;
 }): Promise<Source> {
+  await assertIngestBudget(input.userId);
   const title = cleanTitle(input.name);
   const [row] = await db
     .insert(sources)
@@ -316,6 +318,7 @@ export async function createSourceFromUrl(input: {
   url: string;
   visibility: SourceVisibility;
 }): Promise<Source> {
+  await assertIngestBudget(input.userId);
   const parsed = new URL(input.url);
   const isYoutube = YOUTUBE_HOST.test(parsed.hostname);
   const title = (parsed.hostname + (parsed.pathname !== "/" ? parsed.pathname : "")).slice(0, 200);
@@ -347,6 +350,7 @@ export async function createSourceFromText(input: {
   /** Trộn vào `metadata` (vd. nguồn gốc nhập từ NotebookLM). */
   metadata?: Record<string, unknown>;
 }): Promise<Source> {
+  await assertIngestBudget(input.userId);
   const [row] = await db
     .insert(sources)
     .values({

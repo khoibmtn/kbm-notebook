@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAiProviderForUser, getUserModels } from "@/server/ai";
 import { buildContext } from "@/server/ai/context";
 import type { AiProvider } from "@/server/ai/provider";
+import { enforceUserLimit } from "@/server/api/limits";
 import { ApiError } from "@/server/api/errors";
 import type { Evidence } from "@/server/knowledge/providers/types";
 import { t } from "@/lib/i18n";
@@ -34,6 +35,7 @@ export async function aiEditSlide(
   deps: { provider?: AiProvider } = {},
 ) {
   requireEdit(access);
+  await enforceUserLimit("aiEdit", userId);
   const artifact = access.artifact;
   if (artifact.type !== "slide_deck") throw ApiError.badRequest("Chỉ áp dụng cho bài thuyết trình", "unsupported_type");
   if (artifact.status === "queued" || artifact.status === "generating") {

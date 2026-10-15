@@ -5,6 +5,7 @@ import { db, type Database } from "@/server/db";
 import {
   channelMembers,
   channels,
+  notebookConnections,
   notebookInvites,
   notebookMembers,
   notebooks,
@@ -18,6 +19,7 @@ import type { CreateNotebookInput, UpdateNotebookInput } from "@/lib/validators/
 import { canAssignRole, roleRank } from "@/lib/roles";
 import { emitToNotebook, removeUserFromRooms, rooms } from "@/server/chat/realtime";
 import { requireTrustedEmail } from "@/server/auth/email-verified";
+import { getNotebookRole } from "@/server/auth/permissions";
 import { emailVerificationRequired } from "@/server/env";
 
 /** Báo cho các client đang mở sổ tay biết danh sách thành viên đã đổi. */
@@ -362,6 +364,14 @@ export async function removeMember(opts: {
     await tx
       .delete(notebookMembers)
       .where(and(eq(notebookMembers.notebookId, notebookId), eq(notebookMembers.userId, targetUserId)));
+    // M-6: credential kết nối ngoài của người rời đi (kể cả đã chia sẻ cho thành viên) bị xoá khỏi sổ tay;
+    // lời mời họ đã tạo mà chưa ai chấp nhận bị thu hồi. Nguồn đã nhập từ kết nối vẫn còn dưới dạng nguồn cục bộ.
+    await tx
+      .delete(notebookConnections)
+      .where(and(eq(notebookConnections.notebookId, notebookId), eq(notebookConnections.ownerUserId, targetUserId)));
+    await tx
+      .delete(notebookInvites)
+      .where(and(eq(notebookInvites.notebookId, notebookId), eq(notebookInvites.invitedBy, targetUserId), isNull(notebookInvites.acceptedAt)));
     const chIds = tx.select({ id: channels.id }).from(channels).where(eq(channels.notebookId, notebookId));
     await tx
       .delete(channelMembers)
@@ -425,6 +435,11 @@ export async function acceptInvite(token: string, user: { id: string; email: str
   }
   // Khớp email chỉ có giá trị khi email đã xác minh (H-4)
   await requireTrustedEmail(user.id);
+  // M-6: người mời phải CÒN là thành viên và còn đủ quyền gán vai trò này (admin bị hạ cấp/xoá thì lời mời cũ vô hiệu)
+  const inviterRole = invite.invitedBy ? await getNotebookRole(invite.invitedBy, invite.notebookId) : null;
+  if (!inviterRole || !canAssignRole(inviterRole, invite.role)) {
+    throw ApiError.conflict("Lời mời không còn hiệu lực vì người mời không còn đủ quyền. Hãy nhờ quản trị viên gửi lại lời mời.", "invite_revoked");
+  }
   await db.transaction(async (tx) => {
     await addMember(invite.notebookId, user.id, invite.role, invite.invitedBy, tx);
     await tx.update(notebookInvites).set({ acceptedAt: new Date() }).where(eq(notebookInvites.id, invite.id));

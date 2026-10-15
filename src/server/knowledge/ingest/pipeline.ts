@@ -8,6 +8,7 @@ import { getStorage } from "@/server/storage/local";
 import { detectFileType, estimateTokens, type SourceFileType } from "@/lib/sources";
 import { setSourceStatus } from "../sources";
 import { chunkDocument, buildDocument, type Chunk } from "./chunk";
+import { chargeIngestTokens } from "./budget";
 import { embedTexts } from "./embed";
 import { IngestError } from "./errors";
 import { extractPastedText, type Extracted } from "./extract";
@@ -22,6 +23,8 @@ export type IngestDeps = {
 };
 
 const INSERT_BATCH = 100;
+/** Ước lượng token cho bước tóm tắt (đầu vào bị cắt ở summarize.ts). */
+const SUMMARY_TOKEN_ESTIMATE = 3000;
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<Buffer> {
   const parts: Buffer[] = [];
@@ -83,6 +86,8 @@ export async function ingestSource(sourceId: string, deps: IngestDeps = {}): Pro
   if (chunks.length === 0) throw new IngestError("Không trích xuất được nội dung văn bản từ nguồn này");
   await setSourceStatus(sourceId, { status: "processing", progress: 35 });
 
+  // Ngân sách token xử lý mỗi ngày của người tạo nguồn (embedding toàn bộ tài liệu + tóm tắt) — M-7.
+  await chargeIngestTokens(src.createdBy, chunks.reduce((n, c) => n + c.tokenCount, 0) + SUMMARY_TOKEN_ESTIMATE);
   const provider = await (deps.getProvider ?? getAiProviderForUser)(src.createdBy);
   let lastReported = 35;
   const vectors = await embedTexts(

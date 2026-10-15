@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelNameSchema } from "./model";
 
 export const createConversationSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -18,7 +19,7 @@ export const chatScopeSchema = z.object({
 export const askSchema = z.object({
   question: z.string().trim().min(1, "Câu hỏi không được để trống").max(8000, "Câu hỏi quá dài"),
   scope: chatScopeSchema.default({}),
-  model: z.string().trim().min(1).max(100).optional(),
+  model: modelNameSchema.optional(),
   /** Tạo lại câu trả lời cho câu hỏi cuối cùng (không lưu thêm tin nhắn người dùng). */
   regenerate: z.boolean().optional(),
 });

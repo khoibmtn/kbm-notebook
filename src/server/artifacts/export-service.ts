@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
+import { enforceUserLimit } from "@/server/api/limits";
 import { emitToUser } from "@/server/chat/realtime";
 import { db } from "@/server/db";
 import { artifactExports, artifactVersions, files, type Artifact, type ArtifactVersionRow } from "@/server/db/schema";
@@ -115,6 +116,7 @@ export async function requestExport(params: {
   if (format === "pptx" || ((artifact.type === "infographic" || artifact.type === "slide_deck") && format !== "json")) assertEngineAvailable(artifact.type);
   const version = await resolveVersion(artifact, params.versionId);
   if (isAsyncExport(artifact.type, format)) {
+    await enforceUserLimit("exportHeavy", userId); // mỗi lần xuất mở một Chromium
     const payload: ExportArtifactPayload = { artifactId: artifact.id, versionId: version.id, format, notebookId: artifact.notebookId, userId };
     const job = await enqueue("export_artifact", payload);
     return { mode: "async", jobId: job.id };

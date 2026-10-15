@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
+import { enforceUserLimit } from "@/server/api/limits";
 import { verifiedEmailCondition, verifiedEmailRaw } from "@/server/auth/email-verified";
 import { canViewArtifact, getNotebookRole, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
@@ -370,6 +371,7 @@ export async function createArtifact(params: {
 }): Promise<Artifact> {
   const { notebookId, userId, input } = params;
   assertEngineAvailable(input.type);
+  await enforceUserLimit("artifactGenerate", userId);
   const sourceIds = await resolveScopeSourceIds(notebookId, userId, input.scope?.sourceIds);
   if (sourceIds.length === 0) {
     throw new ApiError(400, "no_sources", "Chưa có nguồn nào sẵn sàng trong phạm vi đã chọn. Hãy thêm hoặc chọn nguồn đã xử lý xong.");
@@ -416,6 +418,7 @@ export async function regenerateArtifact(artifact: Artifact, userId: string, inp
     throw ApiError.conflict("Artifact đang được tạo", "already_generating");
   }
   assertEngineAvailable(artifact.type);
+  await enforceUserLimit("artifactGenerate", userId);
   const prev = configOf(artifact);
   const next: GenerationConfig = {
     ...prev,

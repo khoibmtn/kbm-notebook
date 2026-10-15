@@ -1,4 +1,5 @@
 import { ApiError, handleRoute, parseBody } from "@/server/api/errors";
+import { enforceUserLimit } from "@/server/api/limits";
 import { requireUser } from "@/server/auth/session";
 import { requireNotebookRole } from "@/server/auth/permissions";
 import { assertPublicUrl } from "@/server/knowledge/ingest/ssrf";
@@ -25,6 +26,7 @@ export const POST = handleRoute<P>(async (req, { params }) => {
   const viewer = { userId: user.id, role };
 
   if (input.kind === "url") {
+    await enforceUserLimit("addUrlSource", user.id); // mỗi URL là một lần máy chủ tải trang web ra ngoài
     try {
       await assertPublicUrl(input.url);
     } catch (e) {

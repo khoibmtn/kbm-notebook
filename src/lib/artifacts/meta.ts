@@ -2,6 +2,7 @@
  * Siêu dữ liệu Studio dùng chung client + server: tuỳ chọn tạo, DTO API, định dạng xuất theo loại.
  */
 import { z } from "zod";
+import { modelNameSchema } from "@/lib/validators/model";
 import { ARTIFACT_TYPE_LIST, type ArtifactTypeName } from "./content";
 
 export type { ArtifactTypeName };
@@ -55,7 +56,7 @@ export const createArtifactSchema = z.object({
   customPrompt: z.string().trim().max(8000).optional(),
   options: artifactOptionsSchema.optional(),
   scope: artifactScopeSchema.optional(),
-  model: z.string().trim().max(120).optional(),
+  model: modelNameSchema.optional(),
 });
 export type CreateArtifactInput = z.infer<typeof createArtifactSchema>;
 
@@ -63,7 +64,7 @@ export const regenerateArtifactSchema = z.object({
   customPrompt: z.string().trim().max(8000).optional(),
   options: artifactOptionsSchema.optional(),
   scope: artifactScopeSchema.optional(),
-  model: z.string().trim().max(120).optional(),
+  model: modelNameSchema.optional(),
 });
 export type RegenerateArtifactInput = z.infer<typeof regenerateArtifactSchema>;
 
