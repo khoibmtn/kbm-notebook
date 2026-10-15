@@ -6,10 +6,10 @@ import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/react";
 
 /**
- * Bộ extension của trình soạn ghi chú: starter-kit (đã gồm link, danh sách), danh sách việc cần làm, bảng
- * và `@tiptap/markdown` để lưu/đọc Markdown (`content_md`).
+ * Bộ extension Tiptap DUY NHẤT của ứng dụng (Ghi chú và Studio dùng chung): starter-kit (đã gồm link, danh sách),
+ * danh sách việc cần làm, bảng và `@tiptap/markdown` để đọc/ghi Markdown.
  */
-export function noteExtensions(placeholder = ""): Extensions {
+export function markdownExtensions(placeholder = ""): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },

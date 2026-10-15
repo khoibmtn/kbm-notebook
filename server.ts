@@ -3,6 +3,8 @@ import { createServer } from "node:http";
 import next from "next";
 import { attachSocketServer } from "./src/server/realtime/socket";
 import { registerBuiltinHandlers } from "./src/server/jobs/handlers";
+import { registerExportArtifactHandler } from "./src/server/jobs/handlers/export-artifact";
+import { registerGenerateArtifactHandler } from "./src/server/jobs/handlers/generate-artifact";
 import { registerIngestHandler } from "./src/server/jobs/handlers/ingest";
 import { startWorker } from "./src/server/jobs/worker";
 
@@ -22,6 +24,8 @@ async function main() {
   attachSocketServer(httpServer);
   registerBuiltinHandlers();
   registerIngestHandler();
+  registerGenerateArtifactHandler();
+  registerExportArtifactHandler();
   const worker = startWorker();
 
   httpServer.listen(port, hostname, () => {

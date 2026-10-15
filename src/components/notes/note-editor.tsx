@@ -1,159 +1,16 @@
 "use client";
-import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
-import {
-  Bold,
-  CheckCheck,
-  CheckSquare,
-  Code,
-  Code2,
-  Heading1,
-  Heading2,
-  Heading3,
-  Italic,
-  Link2,
-  List,
-  ListOrdered,
-  Loader2,
-  Quote,
-  Redo2,
-  Strikethrough,
-  Table2,
-  Trash2,
-  Undo2,
-  TriangleAlert,
-} from "lucide-react";
+import { CheckCheck, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { MarkdownEditor } from "@/components/shared/markdown-editor";
 import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api-client";
 import { useT } from "@/lib/i18n-client";
 import { normalizeEditorMarkdown } from "@/lib/markdown";
 import type { NoteDto } from "@/lib/notes";
-import { cn } from "@/lib/utils";
-import { noteExtensions } from "./editor-extensions";
 
 export const AUTOSAVE_DELAY_MS = 800;
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
-
-function ToolbarButton({ label, active, disabled, onClick, children }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn("size-8 shrink-0", active && "bg-accent text-accent-foreground")}
-          aria-label={label}
-          aria-pressed={active}
-          disabled={disabled}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={onClick}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function Toolbar({ editor }: { editor: Editor }) {
-  const t = useT();
-  const s = useEditorState({
-    editor,
-    selector: ({ editor: e }) => ({
-      bold: e.isActive("bold"),
-      italic: e.isActive("italic"),
-      strike: e.isActive("strike"),
-      code: e.isActive("code"),
-      h1: e.isActive("heading", { level: 1 }),
-      h2: e.isActive("heading", { level: 2 }),
-      h3: e.isActive("heading", { level: 3 }),
-      bullet: e.isActive("bulletList"),
-      ordered: e.isActive("orderedList"),
-      task: e.isActive("taskList"),
-      quote: e.isActive("blockquote"),
-      codeBlock: e.isActive("codeBlock"),
-      link: e.isActive("link"),
-      table: e.isActive("table"),
-      canUndo: e.can().undo(),
-      canRedo: e.can().redo(),
-    }),
-  });
-  const chain = () => editor.chain().focus();
-
-  function setLink() {
-    const prev = (editor.getAttributes("link").href as string | undefined) ?? "";
-    const url = window.prompt(t("notes.editor.linkPrompt"), prev);
-    if (url === null) return;
-    if (url.trim() === "") chain().extendMarkRange("link").unsetLink().run();
-    else chain().extendMarkRange("link").setLink({ href: url.trim() }).run();
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b px-2 py-1" role="toolbar" aria-label={t("notes.editor.toolbar")} data-testid="note-toolbar">
-      <ToolbarButton label={t("notes.editor.undo")} disabled={!s.canUndo} onClick={() => chain().undo().run()}>
-        <Undo2 />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.redo")} disabled={!s.canRedo} onClick={() => chain().redo().run()}>
-        <Redo2 />
-      </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-      <ToolbarButton label={t("notes.editor.h1")} active={s.h1} onClick={() => chain().toggleHeading({ level: 1 }).run()}>
-        <Heading1 />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.h2")} active={s.h2} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
-        <Heading2 />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.h3")} active={s.h3} onClick={() => chain().toggleHeading({ level: 3 }).run()}>
-        <Heading3 />
-      </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-      <ToolbarButton label={t("notes.editor.bold")} active={s.bold} onClick={() => chain().toggleBold().run()}>
-        <Bold />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.italic")} active={s.italic} onClick={() => chain().toggleItalic().run()}>
-        <Italic />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.strike")} active={s.strike} onClick={() => chain().toggleStrike().run()}>
-        <Strikethrough />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.code")} active={s.code} onClick={() => chain().toggleCode().run()}>
-        <Code />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.link")} active={s.link} onClick={setLink}>
-        <Link2 />
-      </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-      <ToolbarButton label={t("notes.editor.bullet")} active={s.bullet} onClick={() => chain().toggleBulletList().run()}>
-        <List />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.ordered")} active={s.ordered} onClick={() => chain().toggleOrderedList().run()}>
-        <ListOrdered />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.task")} active={s.task} onClick={() => chain().toggleTaskList().run()}>
-        <CheckSquare />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.quote")} active={s.quote} onClick={() => chain().toggleBlockquote().run()}>
-        <Quote />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.codeBlock")} active={s.codeBlock} onClick={() => chain().toggleCodeBlock().run()}>
-        <Code2 />
-      </ToolbarButton>
-      <ToolbarButton label={t("notes.editor.table")} active={s.table} onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} disabled={s.table}>
-        <Table2 />
-      </ToolbarButton>
-      {s.table && (
-        <ToolbarButton label={t("notes.editor.deleteTable")} onClick={() => chain().deleteTable().run()}>
-          <Trash2 />
-        </ToolbarButton>
-      )}
-    </div>
-  );
-}
 
 type Props = {
   note: NoteDto;
@@ -171,6 +28,8 @@ type Props = {
 export function NoteEditor({ note, canEdit, onSaved, actions }: Props) {
   const t = useT();
   const [title, setTitle] = useState(note.title);
+  /** Giá trị nạp ban đầu (cố định): lưu xong không nạp lại vào trình soạn để không làm nhảy con trỏ. */
+  const [initialContent] = useState(note.contentMd);
   const [state, setState] = useState<SaveState>("idle");
   const initialMd = normalizeEditorMarkdown(note.contentMd);
   const saved = useRef({ title: note.title, md: initialMd });
@@ -237,24 +96,13 @@ export function NoteEditor({ note, canEdit, onSaved, actions }: Props) {
     timer.current = setTimeout(() => void flush(), AUTOSAVE_DELAY_MS);
   }, [flush]);
 
-  const editor = useEditor({
-    extensions: noteExtensions(t("notes.editor.placeholder")),
-    content: note.contentMd,
-    contentType: "markdown",
-    editable: canEdit,
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class: "note-prose min-h-[40vh] px-4 py-3 text-[15px] leading-relaxed outline-none",
-        "aria-label": t("notes.editor.content"),
-        "data-testid": "note-content",
-      },
-    },
-    onUpdate: ({ editor: e }) => {
-      latestMd.current = normalizeEditorMarkdown(e.getMarkdown());
+  const onContentChange = useCallback(
+    (md: string) => {
+      latestMd.current = md;
       if (canEdit) schedule();
     },
-  });
+    [canEdit, schedule],
+  );
 
   // Lưu nốt khi rời đi / đóng tab.
   useEffect(() => {
@@ -303,11 +151,18 @@ export function NoteEditor({ note, canEdit, onSaved, actions }: Props) {
         </span>
         {actions}
       </div>
-      {canEdit && editor && <Toolbar editor={editor} />}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <EditorContent editor={editor} />
-        {!canEdit && <p className="px-4 pb-4 text-xs text-muted-foreground">{t("notes.readOnly")}</p>}
-      </div>
+      <MarkdownEditor
+        value={initialContent}
+        onChange={onContentChange}
+        readOnly={!canEdit}
+        placeholder={t("notes.editor.placeholder")}
+        ariaLabel={t("notes.editor.content")}
+        className="min-h-0 flex-1 rounded-none border-0"
+        contentClassName="kbm-prose min-h-[40vh] px-4 py-3 outline-none"
+        contentTestId="note-content"
+        toolbarTestId="note-toolbar"
+      />
+      {!canEdit && <p className="px-4 pb-4 text-xs text-muted-foreground">{t("notes.readOnly")}</p>}
     </div>
   );
 }

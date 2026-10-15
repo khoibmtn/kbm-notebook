@@ -1,10 +1,10 @@
 import { Editor } from "@tiptap/react";
 import { describe, expect, it } from "vitest";
-import { noteExtensions } from "@/components/notes/editor-extensions";
+import { markdownExtensions } from "@/components/shared/markdown-extensions";
 import { normalizeEditorMarkdown, unescapeCitationBrackets } from "@/lib/markdown";
 
 function roundTrip(md: string): string {
-  const editor = new Editor({ extensions: noteExtensions(), content: md, contentType: "markdown" });
+  const editor = new Editor({ extensions: markdownExtensions(), content: md, contentType: "markdown" });
   const out = normalizeEditorMarkdown(editor.getMarkdown());
   editor.destroy();
   return out;

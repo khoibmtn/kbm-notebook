@@ -1,5 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { buildMockArtifactJson } from "./mock-artifacts";
 import {
   EMBEDDING_DIM,
   type AiProvider,
@@ -84,6 +87,30 @@ export function mockGroundedAnswer(userText: string): string | null {
   return `[mock] Về "${q}": theo nguồn đã chọn, ${excerpt} [1]`;
 }
 
+/** JSON đã đăng ký theo khoá (test): `registerMockJson("artifact:quiz", {...})`. Giá trị có thể là hàm nhận request. */
+const registeredJson = new Map<string, { value: unknown } | { fn: (req: TextRequest) => unknown }>();
+
+export function registerMockJson(key: string, value: unknown): void {
+  registeredJson.set(key, { value });
+}
+
+/** Như `registerMockJson` nhưng JSON được tính từ request (kiểm tra prompt/ngữ cảnh mà generator đã gửi). */
+export function registerMockJsonFn(key: string, fn: (req: TextRequest) => unknown): void {
+  registeredJson.set(key, { fn });
+}
+
+export function clearMockJson(): void {
+  registeredJson.clear();
+}
+
+/** Thư mục chứa `<khoá>.json` (dấu `:` đổi thành `_`) để dev/QA thủ công đặt JSON mẫu mà không cần sửa code. */
+function fixtureJson(key: string): unknown | undefined {
+  const dir = process.env.MOCK_AI_FIXTURES_DIR;
+  if (!dir) return undefined;
+  const file = path.join(dir, `${key.replace(/[^a-zA-Z0-9_-]+/g, "_")}.json`);
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as unknown) : undefined;
+}
+
 export class MockAiProvider implements AiProvider {
   readonly id = "mock" as const;
 
@@ -94,11 +121,28 @@ export class MockAiProvider implements AiProvider {
     return "";
   }
 
+  /** Thứ tự: `__mockJson` → đã đăng ký theo `__mockKey` → tệp mẫu → bộ dựng từ ngữ cảnh (artifact) → đối tượng tối thiểu. */
+  private resolveJson(req: TextRequest): unknown {
+    if (req.__mockJson !== undefined) return req.__mockJson;
+    const key = req.__mockKey;
+    if (key) {
+      const reg = registeredJson.get(key);
+      if (reg) return "fn" in reg ? reg.fn(req) : reg.value;
+      const fixture = fixtureJson(key);
+      if (fixture !== undefined) return fixture;
+      if (key.startsWith("artifact:")) {
+        const built = buildMockArtifactJson(key.slice("artifact:".length), this.lastUser(req));
+        if (built !== undefined) return built;
+      }
+    }
+    return minimalValueFor(req.jsonSchema as JsonSchemaLike);
+  }
+
   async generateText(req: TextRequest): Promise<TextResult> {
     const q = this.lastUser(req).replace(/\s+/g, " ").trim().slice(0, 200);
     const usage = { inputTokens: Math.ceil(q.length / 4), outputTokens: 16, totalTokens: Math.ceil(q.length / 4) + 16 };
     if (req.jsonSchema) {
-      const json = req.__mockJson !== undefined ? req.__mockJson : minimalValueFor(req.jsonSchema as JsonSchemaLike);
+      const json = this.resolveJson(req);
       return { text: JSON.stringify(json), json, usage };
     }
     const grounded = mockGroundedAnswer(this.lastUser(req));

@@ -37,6 +37,7 @@ export type RealtimeEvent =
   | "notification"
   | "source:status"
   | "artifact:status"
+  | "artifact:export"
   | "job:progress"
   | "member:changed";
 

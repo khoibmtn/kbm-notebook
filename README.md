@@ -44,6 +44,8 @@ openssl rand -hex 32        # APP_ENCRYPTION_KEY (32 byte hex)
 | `STORAGE_DIR`, `MAX_UPLOAD_MB` | Thư mục lưu tệp (mặc định `./storage`) và giới hạn tải lên (mặc định 50) |
 | `PORT` | Cổng máy chủ (mặc định 3000) |
 | `GEMINI_CHAT_MODEL`, `GEMINI_ARTIFACT_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_IMAGE_MODEL` | Ghi đè model mặc định (tuỳ chọn) |
+| `PW_CHROMIUM_PATH` | Đường dẫn Chromium dùng xuất PDF/PNG/SVG của Studio (mặc định tìm trong `/opt/pw-browsers`); thiếu Chromium thì PDF dự phòng bằng LibreOffice (`soffice`) |
+| `MOCK_AI_FIXTURES_DIR` | Chỉ với `AI_PROVIDER=mock`: thư mục chứa `artifact_<loại>.json` (vd `artifact_quiz.json`) làm đầu ra mẫu của generator |
 
 Nếu chưa có khoá Gemini: dùng `AI_PROVIDER=mock`, hoặc nhập khoá ở **Cài đặt → AI** rồi bấm "Kiểm tra key". Gọi tính năng AI khi chưa cấu hình trả HTTP 412 (`ai_not_configured`).
 
