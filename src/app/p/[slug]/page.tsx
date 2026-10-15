@@ -1,8 +1,8 @@
-import { BookOpenText, Compass, Heart, Lock, MessageSquare, SearchX } from "lucide-react";
+import { BookOpenText, Compass, Heart, Lock, MessageSquare } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { JoinRequestButton, type JoinState } from "@/components/community/join-request-button";
-import { EmptyState } from "@/components/shared/empty-state";
 import { NotebookCover } from "@/components/shared/notebook-cover";
 import { TYPE_ICONS, TYPE_NAME_KEY } from "@/components/studio/type-meta";
 import { Badge } from "@/components/ui/badge";
@@ -56,16 +56,7 @@ export default async function PublicNotebookPage({ params }: { params: Promise<P
     </header>
   );
 
-  if (!nb) {
-    return (
-      <div className="flex min-h-screen flex-col bg-muted/30">
-        {header}
-        <main className="flex flex-1 items-center justify-center p-6">
-          <EmptyState icon={SearchX} title={t("community.public.notFound")} description={t("community.public.notFoundDescription")} />
-        </main>
-      </div>
-    );
-  }
+  if (!nb) notFound();
 
   let joinState: JoinState = "guest";
   if (session) {

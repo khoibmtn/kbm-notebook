@@ -308,7 +308,7 @@ Chi tiết đầy đủ, API và mô hình bảo mật: [docs/07-ket-noi.md](07-
 - Liên kết sâu: nguồn `/n/<id>/sources/<sourceId>?chunk=<chunkId>`, ghi chú `/n/<id>/notes?note=`, artifact `/n/<id>/artifacts/<id>` (công khai: `/a/<id>`), tin nhắn `/n/<id>/team?channel=&message=`. Trang kết quả có lọc theo loại, `↑/↓` + `Enter`, `/` để tìm lại, URL đồng bộ `?q=`. Bảng lệnh ⌘K có mục "Tìm toàn bộ cho “…”" (luôn hiện cuối danh sách).
 
 **Hoàn thiện**
-- Hướng dẫn 3 bước ở dashboard rỗng (`OnboardingGuide`; mỗi nút tạo sổ tay rồi mở `sources?add=1` / `studio`); thanh mẹo lần đầu vào sổ tay (`TipBar`, localStorage `kbm:tip-dismissed`, server render coi như đã đóng để không nhấp nháy).
+- Hướng dẫn 3 bước ở dashboard rỗng (`OnboardingGuide`; mỗi nút tạo sổ tay rồi mở `sources?add=1` / `studio`); thanh mẹo lần đầu vào sổ tay (`TipBar`, localStorage `kbm:tip-dismissed`; server render luôn có thanh mẹo để không xê dịch bố cục lúc hydrate — người đã đóng thấy nó biến mất ngay sau hydrate).
 - Dark mode: rà toàn bộ trang chính (chụp ảnh Playwright); bìa sổ tay pastel được làm dịu ở chế độ tối (`NotebookCover`). Responsive 390/820px: đo tràn ngang trên 31 trang × 2 cỡ; sửa lưới Explore (`grid-cols-1` + `min-w-0`).
 - Rate limit (bảng `rate_limits`, 429 `rate_limited`, toast hiện thông điệp của máy chủ): sinh/tạo lại artifact 20/10 phút (`enforceArtifactRateLimit`, tính sau khi kiểm tra hợp lệ nên yêu cầu sai không tốn hạn mức), tin nhắn nhóm 120/phút, bình luận 20/phút, yêu cầu tham gia 10/giờ.
 - `/dev/*`: `src/proxy.ts` rewrite sang 404 khi `NODE_ENV=production` (kể cả chưa đăng nhập) + các trang tự `notFound()`.

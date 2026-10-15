@@ -26,11 +26,12 @@ function readDismissed(): boolean {
 
 /**
  * Thanh mẹo ở lần đầu mở sổ tay; đóng một lần là nhớ trong localStorage (đồng bộ giữa tab).
- * Render server coi như đã đóng (không nhấp nháy với người đã đóng); lỗi localStorage → vẫn hiện, đóng chỉ có hiệu lực trong phiên.
+ * Render server luôn có thanh mẹo: người dùng mới không bị xê dịch bố cục lúc hydrate (nút bấm không "nhảy" ngay khi
+ * trang vừa tương tác được); người đã đóng sẽ thấy thanh biến mất ngay sau hydrate. Lỗi localStorage → vẫn hiện.
  */
 export function TipBar() {
   const t = useT();
-  const dismissed = useSyncExternalStore(subscribe, readDismissed, () => true);
+  const dismissed = useSyncExternalStore(subscribe, readDismissed, () => false);
   const dismiss = useCallback(() => {
     try {
       localStorage.setItem(TIP_KEY, "1");

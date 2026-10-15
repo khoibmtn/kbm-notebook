@@ -268,27 +268,27 @@ test("cuộn vô hạn lên trên, dải 'Tin nhắn mới', nút nhảy tới t
   await a.getByRole("button", { name: "Mời", exact: true }).click();
   await expect(a.getByTestId("member-list").getByText(bEmail)).toBeVisible();
 
-  // B nạp sẵn 120 tin qua API (cùng cookie phiên của B)
+  // B nạp sẵn 119 tin qua API (cùng cookie phiên của B; giới hạn gửi là 120 tin/phút nên tin "mới tới" ở dưới là tin thứ 120)
   const channels = await (await b.request.get(`/api/notebooks/${notebookId}/channels`)).json();
   const general = channels.channels.find((c: { type: string }) => c.type === "general").id as string;
-  for (let i = 1; i <= 120; i++) {
+  for (let i = 1; i <= 119; i++) {
     const res = await b.request.post(`/api/channels/${general}/messages`, { data: { kind: "text", content: `tin số ${i}` } });
     expect(res.status()).toBe(201);
   }
 
-  // A mở kênh: thấy dải "Tin nhắn mới" và badge chưa đọc là 120 trước khi mở
+  // A mở kênh: thấy dải "Tin nhắn mới" và badge chưa đọc là 119 trước khi mở
   await a.goto(`/n/${notebookId}/team`);
   await expect(a.getByTestId("message-list")).toBeVisible();
   await expect(a.getByTestId("new-divider")).toBeVisible();
-  await expect(a.getByTestId("message").filter({ hasText: "tin số 120" })).toBeVisible();
+  await expect(a.getByTestId("message").filter({ hasText: "tin số 119" })).toBeVisible();
 
-  // Cuộn lên đầu nhiều lần → nạp đủ 120 tin (keyset), không trùng lặp
+  // Cuộn lên đầu nhiều lần → nạp đủ 119 tin (keyset), không trùng lặp
   const list = a.getByTestId("message-list");
   await expect(async () => {
     await list.evaluate((el) => {
       el.scrollTop = 0;
     });
-    await expect(a.getByTestId("message")).toHaveCount(120, { timeout: 1500 });
+    await expect(a.getByTestId("message")).toHaveCount(119, { timeout: 1500 });
   }).toPass({ timeout: 30_000 });
   await expect(a.getByText("Đầu cuộc trò chuyện")).toBeVisible();
   await expect(a.getByText("tin số 1", { exact: true })).toBeVisible();
