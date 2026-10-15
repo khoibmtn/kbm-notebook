@@ -29,6 +29,9 @@ export type RealtimeEvent =
   | "message:delete"
   | "message:recall"
   | "message:reaction"
+  | "message:pin"
+  | "channel:new"
+  | "channel:update"
   | "typing"
   | "read"
   | "notification"
@@ -54,6 +57,22 @@ export function emitToUser(userId: string, event: RealtimeEvent, payload: unknow
 
 export function emitToChannel(channelId: string, event: RealtimeEvent, payload: unknown): void {
   ns()?.to(rooms.channel(channelId)).emit(event, payload);
+}
+
+/** Cho mọi socket của user vào phòng kênh (vd. DM mới tạo, hoặc vừa được thêm vào kênh). */
+export function joinUserToChannel(userId: string, channelId: string): void {
+  ns()?.in(rooms.user(userId)).socketsJoin(rooms.channel(channelId));
+}
+
+/** Cho mọi socket đang ở phòng notebook vào phòng kênh (kênh chủ đề mới: mọi thành viên). */
+export function joinNotebookToChannel(notebookId: string, channelId: string): void {
+  ns()?.in(rooms.notebook(notebookId)).socketsJoin(rooms.channel(channelId));
+}
+
+/** Rút mọi socket của user khỏi các phòng (vd. bị xoá khỏi notebook). */
+export function removeUserFromRooms(userId: string, roomNames: string[]): void {
+  if (roomNames.length === 0) return;
+  ns()?.in(rooms.user(userId)).socketsLeave(roomNames);
 }
 
 export type JobProgressPayload = {

@@ -16,7 +16,7 @@ import { randomToken } from "@/server/crypto";
 import { DEFAULT_COVER_COLOR, DEFAULT_EMOJI } from "@/lib/notebook-colors";
 import type { CreateNotebookInput, UpdateNotebookInput } from "@/lib/validators/notebooks";
 import { canAssignRole, roleRank } from "@/lib/roles";
-import { emitToNotebook } from "@/server/chat/realtime";
+import { emitToNotebook, removeUserFromRooms, rooms } from "@/server/chat/realtime";
 
 /** Báo cho các client đang mở sổ tay biết danh sách thành viên đã đổi. */
 function notifyMembersChanged(notebookId: string) {
@@ -220,13 +220,16 @@ export async function addMember(
     .values({ notebookId, userId, role, invitedBy })
     .onConflictDoNothing()
     .returning({ userId: notebookMembers.userId });
-  const [general] = await executor
+  // Vào kênh general và mọi kênh chủ đề (DM chỉ gồm đúng hai người nên không thêm).
+  const shared = await executor
     .select({ id: channels.id })
     .from(channels)
-    .where(and(eq(channels.notebookId, notebookId), eq(channels.type, "general")))
-    .limit(1);
-  if (general) {
-    await executor.insert(channelMembers).values({ channelId: general.id, userId }).onConflictDoNothing();
+    .where(and(eq(channels.notebookId, notebookId), inArray(channels.type, ["general", "topic"])));
+  if (shared.length > 0) {
+    await executor
+      .insert(channelMembers)
+      .values(shared.map((c) => ({ channelId: c.id, userId })))
+      .onConflictDoNothing();
   }
   return inserted.length > 0;
 }
@@ -360,6 +363,9 @@ export async function removeMember(opts: {
       .delete(channelMembers)
       .where(and(eq(channelMembers.userId, targetUserId), inArray(channelMembers.channelId, chIds)));
   });
+  // Rút socket của người bị xoá khỏi phòng notebook và các phòng kênh để không còn nhận tin.
+  const chanRows = await db.select({ id: channels.id }).from(channels).where(eq(channels.notebookId, notebookId));
+  removeUserFromRooms(targetUserId, [rooms.notebook(notebookId), ...chanRows.map((c) => rooms.channel(c.id))]);
   notifyMembersChanged(notebookId);
 }
 
