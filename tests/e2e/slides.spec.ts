@@ -212,7 +212,7 @@ test("editor: xuất PPTX chứa hộp chữ thật (text box + notes) từ deck
   expect(Object.keys(zip.files).some((n) => n.startsWith("ppt/notesSlides/"))).toBe(true);
 });
 
-test("editor: chỉ đọc không cho sửa & bố cục hẹp (di động) không tràn ngang", async ({ page }) => {
+test("editor: bố cục hẹp (di động) không tràn ngang", async ({ page }) => {
   await openEditor(page, "mobile");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dev/slides");
@@ -220,4 +220,45 @@ test("editor: chỉ đọc không cho sửa & bố cục hẹp (di động) khô
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "test-results/slides-08-mobile.png", fullPage: true });
+});
+
+test("infographic: sửa giá trị tại chỗ, đổi bảng màu, ảnh chụp giao diện", async ({ page }) => {
+  await signUp(page, "info");
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto("/dev/infographic");
+  const view = page.getByTestId("infographic-view");
+  await expect(view).toBeVisible();
+  await expect(page.getByTestId("dev-banner")).toContainText("DEV FIXTURE");
+  const value = view.locator('[data-field="blocks.0.value"]');
+  await expect(value).toHaveText("35%");
+
+  await value.click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("48%");
+  await page.keyboard.press("Enter");
+  await expect(value).toHaveText("48%");
+
+  const title = view.locator('[data-field="title"]');
+  await title.click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Tiêu đề infographic đã sửa");
+  await page.keyboard.press("Enter");
+  await expect(title).toHaveText("Tiêu đề infographic đã sửa");
+
+  // xoá trắng một mục danh sách = bỏ mục đó
+  const items = view.locator('[data-field^="blocks.7.items."]');
+  await expect(items).toHaveCount(3);
+  await items.nth(1).click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Enter");
+  await expect(items).toHaveCount(2);
+
+  await page.getByTestId("info-palette-emerald").click();
+  await expect(view.locator('[data-key="header-bg"]')).toHaveCSS("background-color", "rgb(2, 44, 34)");
+  await page.screenshot({ path: "test-results/infographic-01-portrait.png", fullPage: true });
+
+  await page.getByTestId("orientation-landscape").click();
+  await expect(view.locator(".kbm-slide")).toHaveAttribute("data-orientation", "landscape");
+  await page.screenshot({ path: "test-results/infographic-02-landscape.png", fullPage: true });
 });

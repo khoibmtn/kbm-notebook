@@ -1,0 +1,28 @@
+{
+  "_comment": "DEV FIXTURE — dữ liệu minh hoạ chỉ để xem trước infographic. Không phải dữ liệu sản phẩm.",
+  "title": "Năng lượng tái tạo: bức tranh tổng quan",
+  "subtitle": "Số liệu chính, quy trình triển khai và so sánh công nghệ (dữ liệu minh hoạ)",
+  "orientation": "portrait",
+  "palette": "indigo",
+  "evidence": [
+    { "id": "ev-1", "provider": "local", "sourceId": null, "sourceTitle": "Báo cáo năng lượng (fixture)", "locator": { "page": 4 }, "text": "Điện mặt trời tăng 35% so với năm trước.", "score": 0.9 },
+    { "id": "ev-2", "provider": "local", "sourceId": null, "sourceTitle": "Phân tích chính sách (fixture)", "locator": { "section": "Cơ chế giá điện" }, "text": "Chính sách hỗ trợ.", "score": 0.8 },
+    { "id": "ev-3", "provider": "web", "sourceId": null, "sourceTitle": "Tổng quan thị trường (fixture)", "locator": { "url": "https://example.com/tong-quan" }, "text": "Tổng quan.", "score": 0.7 }
+  ],
+  "blocks": [
+    { "id": "b1", "type": "stat", "value": "35%", "label": "Tăng trưởng điện mặt trời", "caption": "So với năm trước", "icon": "trending-up", "citations": [1] },
+    { "id": "b2", "type": "stat", "value": "17 GW", "label": "Công suất mặt trời lắp đặt", "icon": "zap", "citations": [1] },
+    { "id": "b3", "type": "icon_text", "icon": "lightbulb", "title": "Chi phí giảm mạnh", "text": "Điện gió và mặt trời ngày càng rẻ hơn nhiệt điện mới.", "citations": [3] },
+    { "id": "b4", "type": "icon_text", "icon": "globe", "title": "Cam kết khí hậu", "text": "Mục tiêu giảm phát thải ròng về 0 thúc đẩy đầu tư.", "citations": [2] },
+    { "id": "b5", "type": "chart", "title": "Công suất theo nguồn (GW)", "chart": { "type": "bar", "labels": ["Thuỷ điện", "Than", "Mặt trời", "Gió"], "series": [{ "name": "GW", "values": [22, 26, 17, 5] }] }, "citations": [1, 3] },
+    { "id": "b6", "type": "process", "title": "Từ dự án đến lưới điện", "steps": [
+      { "title": "Khảo sát và quy hoạch", "description": "Đánh giá tiềm năng và vị trí đấu nối." },
+      { "title": "Xin chấp thuận chủ trương", "description": "Hoàn tất thủ tục pháp lý và môi trường." },
+      { "title": "Xây dựng và đấu nối", "description": "Thi công, thử nghiệm và hoà lưới." },
+      { "title": "Vận hành" }
+    ], "citations": [2] },
+    { "id": "b7", "type": "compare", "title": "Mặt trời so với gió", "left": { "heading": "Mặt trời", "items": ["Lắp nhanh", "Chỉ phát ban ngày", "Chi phí giảm"] }, "right": { "heading": "Gió", "items": ["Hệ số công suất cao", "Cần mặt bằng", "Biến động theo mùa"] }, "citations": [3] },
+    { "id": "b8", "type": "list", "title": "Ưu tiên chính sách", "items": ["Mở rộng lưới truyền tải", "Cơ chế giá ổn định", "Phát triển lưu trữ"], "ordered": true, "citations": [2] },
+    { "id": "b9", "type": "quote", "text": "Chuyển dịch năng lượng là bài toán thể chế và niềm tin.", "attribution": "Phân tích chính sách (fixture)", "citations": [2] }
+  ]
+}

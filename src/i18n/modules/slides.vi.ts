@@ -93,4 +93,6 @@ export const slidesVi = {
   "slides.present.prev": "Slide trước",
   "slides.present.next": "Slide sau",
   "slides.present.exit": "Thoát (Esc)",
+
+  "infographic.palette": "Bảng màu",
 } as const;

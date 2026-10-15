@@ -94,4 +94,6 @@ export const slidesEn: Record<keyof typeof slidesVi, string> = {
   "slides.present.prev": "Previous slide",
   "slides.present.next": "Next slide",
   "slides.present.exit": "Exit (Esc)",
+
+  "infographic.palette": "Palette",
 };
