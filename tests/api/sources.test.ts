@@ -13,7 +13,7 @@ import { createIngestHandler } from "@/server/jobs/handlers/ingest";
 import { claimJob, registerJobHandler, runJob } from "@/server/jobs/worker";
 import type { Evidence } from "@/server/knowledge/providers/types";
 import type { SourceDetailDto, SourceDto } from "@/lib/sources";
-import { createNotebookWithMembers } from "../helpers/fixtures";
+import { createNotebookWithMembers as createNotebookFixture } from "../helpers/fixtures";
 import { makeBlankPdf, makeDocx, makeFile, makeMaliciousPptx, makePdf, makePptx } from "../helpers/docs";
 import { makeRequest, params, type TestUser } from "../helpers/users";
 
@@ -32,13 +32,36 @@ vi.mock("@/server/knowledge/ingest/ssrf", async (importOriginal) => {
   };
 });
 
-/** Chạy mọi job ingest_source đang chờ (chỉ file test này tạo loại job này). */
+/** Sổ tay do file test này tạo — các file test khác chạy song song trên cùng DB cũng xếp job `ingest_source`. */
+const myNotebooks = new Set<string>();
+async function createNotebookWithMembers(...args: Parameters<typeof createNotebookFixture>) {
+  const fx = await createNotebookFixture(...args);
+  myNotebooks.add(fx.notebook.id);
+  return fx;
+}
+
+/**
+ * Chạy mọi job ingest_source của CÁC SỔ TAY CỦA FILE NÀY. Job của file test khác (cùng DB) được trả lại hàng đợi,
+ * không chạy và không tính vào kết quả → kết quả xác định dù chạy song song.
+ */
 async function runIngestJobs(): Promise<string[]> {
   const outcomes: string[] = [];
-  for (;;) {
-    const job = await claimJob("test-worker", ["ingest_source"]);
-    if (!job) break;
-    outcomes.push(await runJob(job));
+  const foreign: string[] = [];
+  try {
+    for (;;) {
+      const job = await claimJob("test-worker", ["ingest_source"]);
+      if (!job) break;
+      const nb = (job.payload as { notebookId?: string }).notebookId;
+      if (nb && !myNotebooks.has(nb)) {
+        foreign.push(job.id);
+        continue;
+      }
+      outcomes.push(await runJob(job));
+    }
+  } finally {
+    for (const id of foreign) {
+      await db.execute(sql`UPDATE jobs SET status = 'queued', attempts = GREATEST(attempts - 1, 0), locked_at = NULL, locked_by = NULL WHERE id = ${id} AND status = 'running'`);
+    }
   }
   return outcomes;
 }
