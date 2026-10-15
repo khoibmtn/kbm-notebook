@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { attachSocketServer } from "./src/server/realtime/socket";
 import { registerBuiltinHandlers } from "./src/server/jobs/handlers";
+import { registerIngestHandler } from "./src/server/jobs/handlers/ingest";
 import { startWorker } from "./src/server/jobs/worker";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -20,6 +21,7 @@ async function main() {
 
   attachSocketServer(httpServer);
   registerBuiltinHandlers();
+  registerIngestHandler();
   const worker = startWorker();
 
   httpServer.listen(port, hostname, () => {
