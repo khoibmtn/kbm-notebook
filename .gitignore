@@ -29,3 +29,6 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# worktree tạm của agent
+.claude/worktrees/
