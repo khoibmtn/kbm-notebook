@@ -1,0 +1,73 @@
+import "server-only";
+import type { Namespace, Server } from "socket.io";
+
+/**
+ * Singleton Socket.IO gắn trên globalThis: server.ts (tsx/esbuild) tạo, còn route handler của Next
+ * (bundle riêng trong cùng tiến trình) dùng lại qua cùng một globalThis.
+ */
+type G = typeof globalThis & { __kbmIo?: Server };
+const g = globalThis as G;
+
+export const RT_NAMESPACE = "/rt";
+
+export function setIo(io: Server): void {
+  g.__kbmIo = io;
+}
+
+export function getIo(): Server | null {
+  return g.__kbmIo ?? null;
+}
+
+function ns(): Namespace | null {
+  return getIo()?.of(RT_NAMESPACE) ?? null;
+}
+
+/** Sự kiện realtime (docs/02 §3.5). */
+export type RealtimeEvent =
+  | "message:new"
+  | "message:edit"
+  | "message:delete"
+  | "message:recall"
+  | "message:reaction"
+  | "typing"
+  | "read"
+  | "notification"
+  | "source:status"
+  | "artifact:status"
+  | "job:progress"
+  | "member:changed";
+
+export const rooms = {
+  notebook: (id: string) => `notebook:${id}`,
+  channel: (id: string) => `channel:${id}`,
+  user: (id: string) => `user:${id}`,
+};
+
+// Khi chưa có server Socket.IO (vd: chạy test / next dev thuần), các hàm emit là no-op.
+export function emitToNotebook(notebookId: string, event: RealtimeEvent, payload: unknown): void {
+  ns()?.to(rooms.notebook(notebookId)).emit(event, payload);
+}
+
+export function emitToUser(userId: string, event: RealtimeEvent, payload: unknown): void {
+  ns()?.to(rooms.user(userId)).emit(event, payload);
+}
+
+export function emitToChannel(channelId: string, event: RealtimeEvent, payload: unknown): void {
+  ns()?.to(rooms.channel(channelId)).emit(event, payload);
+}
+
+export type JobProgressPayload = {
+  jobId: string;
+  type: string;
+  status: "running" | "done" | "failed";
+  progress: number;
+  error?: string;
+};
+
+/** Phát tiến độ job tới notebook/user nếu payload job có `notebookId`/`userId`. */
+export function emitJobProgress(jobPayload: unknown, data: JobProgressPayload): void {
+  if (!jobPayload || typeof jobPayload !== "object") return;
+  const p = jobPayload as { notebookId?: unknown; userId?: unknown };
+  if (typeof p.notebookId === "string") emitToNotebook(p.notebookId, "job:progress", data);
+  if (typeof p.userId === "string") emitToUser(p.userId, "job:progress", data);
+}
