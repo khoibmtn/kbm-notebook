@@ -25,9 +25,9 @@ export async function generateFlashcards(input: GeneratorInput): Promise<Generat
     const tags = c.tags?.map((t) => t.trim()).filter(Boolean);
     return {
       id: newItemId("c"),
-      front: c.front.trim(),
-      back: c.back.trim(),
-      ...(c.hint?.trim() ? { hint: c.hint.trim() } : {}),
+      front: remap.markdown(c.front.trim()),
+      back: remap.markdown(c.back.trim()),
+      ...(c.hint?.trim() ? { hint: remap.markdown(c.hint.trim()) } : {}),
       ...(tags?.length ? { tags } : {}),
       citations: remap.list(c.citations),
     };

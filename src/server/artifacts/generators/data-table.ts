@@ -38,7 +38,7 @@ export async function generateDataTable(input: GeneratorInput): Promise<Generate
   const rows = out.rows
     .filter((r) => r.cells.some((c) => c.trim()))
     .map((r) => ({
-      cells: Object.fromEntries(columns.map((col, i) => [col.key, (r.cells[i] ?? "").trim()])),
+      cells: Object.fromEntries(columns.map((col, i) => [col.key, remap.markdown((r.cells[i] ?? "").trim())])),
       citations: remap.list(r.citations),
     }));
   if (rows.length === 0) throw new ArtifactGenerationError("Model không trích xuất được dòng dữ liệu nào");

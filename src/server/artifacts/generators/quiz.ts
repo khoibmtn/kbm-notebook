@@ -59,11 +59,12 @@ export async function generateQuiz(input: GeneratorInput): Promise<GeneratedArti
   if (finalKept.length === 0) throw new ArtifactGenerationError("Model không tạo được câu hỏi hợp lệ nào");
 
   const remap = new CitationRemapper(input.evidence);
-  const questions: QuizQuestion[] = finalKept.map(({ q, citations }) => ({
-    ...q,
-    id: newItemId("q"),
-    citations: remap.list(citations),
-  }));
+  // Model có thể chèn [n] ngay trong câu hỏi/giải thích: chuẩn hoá + đánh số lại cùng bộ ánh xạ với `citations`.
+  const questions: QuizQuestion[] = finalKept.map(({ q, citations }) => {
+    const stem = remap.markdown(q.stem);
+    const explanation = remap.markdown(q.explanation);
+    return { ...q, stem, explanation, id: newItemId("q"), citations: remap.list(citations) };
+  });
   const content: QuizContent = quizContentSchema.parse({ questions, evidence: remap.used });
   return { content, title: out.title.trim() || undefined };
 }

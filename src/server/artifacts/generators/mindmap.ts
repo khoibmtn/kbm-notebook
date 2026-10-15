@@ -60,8 +60,8 @@ export async function generateMindmap(input: GeneratorInput): Promise<GeneratedA
     const citations = remap.list(n.rawCitations);
     return {
       id: newItemId("m"),
-      label: n.label,
-      ...(n.note ? { note: n.note } : {}),
+      label: remap.markdown(n.label).trim() || n.label,
+      ...(n.note ? { note: remap.markdown(n.note) } : {}),
       ...(citations ? { citations } : {}),
       children: n.children.map(convert),
     };
