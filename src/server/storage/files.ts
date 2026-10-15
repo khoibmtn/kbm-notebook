@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   artifactExports,
+  artifactVersions,
   artifacts,
   channelMembers,
   files,
@@ -71,6 +72,39 @@ registerFileAccessRule(async (userId, file) => {
   for (const { a } of rows) if (await canViewArtifact(userId, a)) return true;
   return false;
 });
+
+/**
+ * Ảnh nằm trong nội dung artifact (slide `image.fileId`, infographic `imageFileId`): ai `canViewArtifact` đều đọc được.
+ * Tìm bằng `jsonb_path_exists` trên các phiên bản của artifact loại slide_deck/infographic (chính xác, không khớp chuỗi).
+ */
+async function artifactsReferencingFile(fileId: string) {
+  return db
+    .selectDistinct({ a: artifacts })
+    .from(artifactVersions)
+    .innerJoin(artifacts, eq(artifacts.id, artifactVersions.artifactId))
+    .where(
+      and(
+        isNull(artifacts.deletedAt),
+        sql`${artifacts.type} in ('slide_deck', 'infographic')`,
+        sql`(jsonb_path_exists(${artifactVersions.content}, '$.slides[*].image.fileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text))
+          or jsonb_path_exists(${artifactVersions.content}, '$.imageFileId ? (@ == $id)', jsonb_build_object('id', ${fileId}::text)))`,
+      ),
+    );
+}
+
+registerFileAccessRule(async (userId, file) => {
+  for (const { a } of await artifactsReferencingFile(file.id)) if (await canViewArtifact(userId, a)) return true;
+  return false;
+});
+
+/** Khách mở liên kết chia sẻ (`?share=<token>`): đọc được ảnh được tham chiếu bởi đúng artifact đó. */
+export async function canAccessFileViaShare(shareToken: string, fileId: string): Promise<boolean> {
+  if (!shareToken || shareToken.length < 16) return false;
+  for (const { a } of await artifactsReferencingFile(fileId)) {
+    if (a.shareToken === shareToken && (a.visibility === "link" || a.visibility === "public")) return true;
+  }
+  return false;
+}
 
 /**
  * Chủ tệp, hoặc thành viên notebook nơi tệp được tham chiếu (nguồn / tệp đính kèm / artifact export).

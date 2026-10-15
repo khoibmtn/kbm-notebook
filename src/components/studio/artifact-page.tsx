@@ -28,7 +28,7 @@ import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { useRealtime, useRealtimeEvent } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
-import { ArtifactBody } from "./artifact-body";
+import { ArtifactBody, type EngineHandlers } from "./artifact-body";
 import { ShareDialog } from "./share-dialog";
 import { FORMAT_LABEL_KEY, TYPE_ICONS, TYPE_NAME_KEY } from "./type-meta";
 import { useArtifactExport } from "./use-export";
@@ -158,8 +158,8 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
     return () => window.removeEventListener("beforeunload", onBefore);
   }, [dirty]);
 
-  const save = useCallback(async () => {
-    if (!artifact || draft === null) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!artifact || draft === null) return true;
     setSaving(true);
     try {
       const res = await api<{ artifact: ArtifactDetailDto; version: { versionNo: number } | null }>(`/api/artifacts/${artifact.id}`, {
@@ -169,6 +169,7 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
       setArtifact(res.artifact);
       setDraft(null);
       toast.success(t("studio.toast.saved", { n: res.version?.versionNo ?? res.artifact.currentVersionNo ?? 0 }));
+      return true;
     } catch (e) {
       if (e instanceof ApiClientError && e.code === "version_conflict") {
         toast.error(t("studio.toast.conflict"), {
@@ -181,6 +182,7 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
           },
         });
       } else toast.error(errorMessage(e, t("common.error")));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -266,6 +268,37 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
       toast.error(errorMessage(e, t("common.error")));
     }
   };
+
+  /** Móc cho engine slide: sửa bằng AI, xuất, tải ảnh. Bản nháp chưa lưu được lưu trước để server làm việc trên đúng nội dung. */
+  const slideHandlers: EngineHandlers | undefined = artifact
+    ? {
+        onSlideAiEdit: async (slideId, instruction) => {
+          if (!(await save())) throw new Error(t("studio.toast.saveFirst"));
+          const res = await api<{ artifact: ArtifactDetailDto }>(`/api/artifacts/${artifact.id}/slides/${slideId}/ai-edit`, {
+            method: "POST",
+            json: { instruction, baseVersionId: artifact.currentVersionId ?? undefined },
+          });
+          setArtifact(res.artifact);
+          setDraft(null);
+          if (versionsOpen) void loadVersions();
+          toast.success(t("studio.toast.aiEdited"));
+        },
+        onExport: (format) => {
+          void (async () => {
+            if (!(await save())) return;
+            await exportAs(artifact.id, format);
+          })();
+        },
+        onSlideImageUpload: async (_slideId, file) => {
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch(`/api/artifacts/${artifact.id}/images`, { method: "POST", body: form, credentials: "same-origin" });
+          const data = (await res.json().catch(() => null)) as { fileId?: string; error?: { message?: string } } | null;
+          if (!res.ok || !data?.fileId) throw new Error(data?.error?.message ?? t("studio.image.uploadFailed"));
+          return { fileId: data.fileId };
+        },
+      }
+    : undefined;
 
   if (error && !artifact) {
     return (
@@ -478,6 +511,7 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
               onChange={artifact.canEdit && !preview && !busy ? (c) => setDraft(c) : undefined}
               readOnly={readOnly}
               notebookId={notebook.id}
+              handlers={slideHandlers}
             />
           </>
         ) : busy ? (

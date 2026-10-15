@@ -1,56 +1,21 @@
 "use client";
-import { Construction } from "lucide-react";
-import type { ComponentType } from "react";
-import type { z } from "zod";
-import { EmptyState } from "@/components/shared/empty-state";
-import type { infographicEnvelopeSchema, slideDeckEnvelopeSchema } from "@/lib/artifacts/content";
-import { useT } from "@/lib/i18n-client";
+import type { ComponentProps, ComponentType } from "react";
+import { InfographicView } from "./infographic/infographic-view";
+import { SlideEditor } from "./slides/slide-editor";
 
 /**
- * ĐIỂM NỐI DUY NHẤT phía giao diện với engine slide/infographic (do nhóm khác viết).
- *
- * Khi mô-đun có mặt (`src/components/studio/slides/slide-editor.tsx`, `src/components/studio/infographic/infographic-view.tsx`),
- * thay khối "STUB" bên dưới bằng:
- *
- *   import { SlideEditor } from "./slides/slide-editor";
- *   import { InfographicView } from "./infographic/infographic-view";
- *   export const clientEngines: ClientEngines = { SlideEditor, InfographicView };
- *
- * (và đăng ký phía máy chủ trong `src/server/artifacts/registry.ts`). Chưa có engine → hiện thông báo rõ ràng, không dựng giả.
+ * ĐIỂM NỐI DUY NHẤT phía giao diện với engine slide/infographic (docs/06-slide-engine.md).
+ * Phía máy chủ được đăng ký ở `src/server/artifacts/registry.ts`.
  */
-export type SlideDeckContent = z.infer<typeof slideDeckEnvelopeSchema>;
-export type InfographicContent = z.infer<typeof infographicEnvelopeSchema>;
+export type { SlideDeckContent } from "@/server/artifacts/slides/types";
+export type { InfographicContent } from "@/server/artifacts/infographic/types";
 
-export type SlideEditorProps = {
-  content: SlideDeckContent;
-  onChange: (c: SlideDeckContent) => void;
-  readOnly?: boolean;
-  onAiEdit?: (slideId: string, instruction: string) => Promise<void>;
-};
-export type InfographicViewProps = {
-  content: InfographicContent;
-  onChange?: (c: InfographicContent) => void;
-  readOnly?: boolean;
-};
+export type SlideEditorProps = ComponentProps<typeof SlideEditor>;
+export type InfographicViewProps = ComponentProps<typeof InfographicView>;
 
 export type ClientEngines = {
-  SlideEditor: ComponentType<SlideEditorProps> | null;
-  InfographicView: ComponentType<InfographicViewProps> | null;
+  SlideEditor: ComponentType<SlideEditorProps>;
+  InfographicView: ComponentType<InfographicViewProps>;
 };
 
-/* ============================== STUB (chưa có engine) ============================== */
-export const clientEngines: ClientEngines = { SlideEditor: null, InfographicView: null };
-/* ================================================================================= */
-
-/** Thông báo "chưa có engine" cho slide_deck / infographic. */
-export function EngineMissing({ kind }: { kind: "slide_deck" | "infographic" }) {
-  const t = useT();
-  return (
-    <EmptyState
-      icon={Construction}
-      title={t(kind === "slide_deck" ? "studio.engine.slides.title" : "studio.engine.infographic.title")}
-      description={t("studio.engine.missing")}
-      badge={t("studio.badge.noEngine")}
-    />
-  );
-}
+export const clientEngines: ClientEngines = { SlideEditor, InfographicView };

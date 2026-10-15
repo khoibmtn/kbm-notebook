@@ -22,6 +22,18 @@ export async function markdownToPdfChromium(markdown: string, title: string): Pr
   });
 }
 
+/**
+ * HTML đã dựng sẵn (slide deck / infographic) → PDF bằng Chromium. Kích thước trang lấy từ `@page` trong HTML
+ * (`preferCSSPageSize`), nền in đủ màu. Ảnh phải nhúng sẵn dạng `data:` (Chromium bị chặn mạng khi xuất).
+ */
+export async function htmlToPdfChromium(html: string): Promise<Buffer> {
+  return withPage(async (page) => {
+    await page.setContent(html, { waitUntil: "load" });
+    const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });
+    return Buffer.from(pdf);
+  });
+}
+
 /** DOCX → PDF bằng LibreOffice (`soffice --headless --convert-to pdf`), dùng khi không có Chromium. */
 export async function docxToPdfLibreOffice(docx: Buffer, name = "document"): Promise<Buffer> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "kbm-pdf-"));

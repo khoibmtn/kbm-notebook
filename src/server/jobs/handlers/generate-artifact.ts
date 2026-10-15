@@ -7,6 +7,8 @@ import type { AiProvider } from "@/server/ai/provider";
 import { composePrompt } from "@/server/artifacts/prompt";
 import { collectEvidence, EVIDENCE_PROFILES, type CollectDeps } from "@/server/artifacts/evidence";
 import { runGenerator } from "@/server/artifacts/generators";
+import type { SlideDeckContent } from "@/server/artifacts/registry";
+import { persistSlideImages } from "@/server/artifacts/slide-images";
 import { addVersion, configOf, emitArtifactEvent, type GenerateArtifactPayload } from "@/server/artifacts/service";
 import { contentSchemaFor, type ArtifactEvidence } from "@/lib/artifacts/content";
 import { ApiError } from "@/server/api/errors";
@@ -124,7 +126,9 @@ export async function generateArtifactNow(
     });
 
     await report(90, t("studio.stage.saving"));
-    const content = contentSchemaFor(artifact.type).parse(generated.content);
+    // Ảnh AI do engine slide trả dạng dataUrl → lưu vào kho tệp, thay bằng fileId trước khi ghi phiên bản.
+    const raw = artifact.type === "slide_deck" ? await persistSlideImages(generated.content as SlideDeckContent, userId, artifact.title) : generated.content;
+    const content = contentSchemaFor(artifact.type).parse(raw);
     const note = payload.reason === "create" ? t("studio.version.generatedNote") : t("studio.version.regeneratedNote");
     const version = await addVersion(artifact.id, { content, userId, note, setStatusReady: true });
     if (cfg.titleAuto && generated.title) {

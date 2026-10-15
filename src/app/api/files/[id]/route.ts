@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { ApiError, handleRoute, isUuid } from "@/server/api/errors";
 import { requireUser } from "@/server/auth/session";
-import { canAccessFile, getFile } from "@/server/storage/files";
+import { canAccessFile, canAccessFileViaShare, getFile } from "@/server/storage/files";
 import { getStorage } from "@/server/storage/local";
 
 // Các MIME có thể thực thi script trong trình duyệt → luôn tải xuống, không hiển thị inline.
@@ -9,11 +9,14 @@ const FORCE_DOWNLOAD = /^(text\/html|image\/svg\+xml|application\/xhtml\+xml|tex
 
 export const GET = handleRoute<{ id: string }>(async (req, { params }) => {
   const { id } = await params;
-  const { user } = await requireUser();
   if (!isUuid(id)) throw ApiError.notFound("Không tìm thấy tệp");
+  const share = new URL(req.url).searchParams.get("share");
+  // Khách mở liên kết chia sẻ artifact (`?share=<token>`) được đọc ảnh của chính artifact đó, không cần đăng nhập.
+  const viaShare = share ? await canAccessFileViaShare(share, id) : false;
+  const user = viaShare ? null : (await requireUser()).user;
   const file = await getFile(id);
   // Không phân biệt "không tồn tại" và "không có quyền" để không lộ thông tin.
-  if (!file || !(await canAccessFile(user.id, id))) throw ApiError.notFound("Không tìm thấy tệp");
+  if (!file || (!viaShare && !(user && (await canAccessFile(user.id, id))))) throw ApiError.notFound("Không tìm thấy tệp");
 
   const etag = `"${file.sha256}"`;
   if (req.headers.get("if-none-match") === etag) {

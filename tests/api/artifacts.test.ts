@@ -15,7 +15,7 @@ import { GET as listVersions } from "@/app/api/artifacts/[artifactId]/versions/r
 import { POST as restoreVersion } from "@/app/api/artifacts/[artifactId]/versions/[versionId]/restore/route";
 import { GET as getShared } from "@/app/api/share/[token]/route";
 import { GET as getPrompts } from "@/app/api/settings/prompts/route";
-import { registerEngines } from "@/server/artifacts/registry";
+import { registerDefaultEngines, registerEngines } from "@/server/artifacts/registry";
 import { clearMockJson, registerMockJson, registerMockJsonFn } from "@/server/ai/mock";
 import { db } from "@/server/db";
 import { artifacts, jobs } from "@/server/db/schema";
@@ -58,7 +58,7 @@ beforeAll(() => {
 });
 afterEach(() => {
   clearMockJson();
-  registerEngines({ slide_deck: null, infographic: null });
+  registerDefaultEngines();
 });
 afterAll(async () => {
   await db.delete(jobs).where(eq(jobs.type, "generate_artifact"));
@@ -174,6 +174,7 @@ describe("tạo artifact", () => {
   });
 
   it("slide_deck/infographic: 501 not_implemented khi chưa có engine, không tạo hàng nào", async () => {
+    registerEngines({ slide_deck: null, infographic: null });
     const c = await setup();
     const before = (await db.select().from(artifacts).where(eq(artifacts.notebookId, c.notebook.id))).length;
     for (const type of ["slide_deck", "infographic"]) {

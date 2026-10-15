@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownEditor } from "@/components/shared/markdown-editor";
 import { MarkdownView } from "@/components/shared/markdown-view";
 import { ArtifactBody } from "@/components/studio/artifact-body";
@@ -263,11 +263,63 @@ describe("DataTableView", () => {
   });
 });
 
-describe("ArtifactBody: slide_deck/infographic", () => {
-  it("chưa có engine → thông báo rõ ràng, không dựng nội dung giả", () => {
-    wrap(<ArtifactBody artifactId="a" type="slide_deck" content={{ theme: { palette: "x", font: "y" }, slides: [{ id: "s1" }], evidence: [] }} />);
-    expect(screen.getByText("Chưa có engine")).toBeInTheDocument();
-    expect(screen.getByText(/chưa được tích hợp/)).toBeInTheDocument();
+describe("ArtifactBody: slide_deck/infographic (engine thật)", () => {
+  beforeAll(() => {
+    // jsdom không có matchMedia/ResizeObserver mà editor slide dùng để co canvas.
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({ matches: true, media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false, onchange: null }),
+    });
+    class RO {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = RO;
+  });
+
+  const deck = {
+    theme: { palette: "indigo", font: "Inter" },
+    slides: [
+      { id: "s1", layout: "title", title: "Bài giảng tế bào", subtitle: "Phần mở đầu" },
+      { id: "s2", layout: "title_bullets", title: "Ty thể tạo ATP", bullets: ["Hô hấp tế bào", "Nhà máy năng lượng"], citations: [1] },
+    ],
+    evidence,
+  };
+
+  it("slide_deck: dựng SlideEditor với các slide thật; chỉ đọc thì không có sửa bằng AI/xuất", async () => {
+    wrap(<ArtifactBody artifactId="a" type="slide_deck" content={deck} readOnly />);
+    expect(await screen.findByTestId("slide-editor")).toBeInTheDocument();
+    expect(screen.getAllByTestId("slide-thumb")).toHaveLength(2);
+    expect(screen.queryByTestId("panel-ai")).toBeNull();
+    expect(screen.queryByTestId("toolbar-export")).toBeNull();
+    expect(screen.queryByText("Chưa có engine")).toBeNull();
+  });
+
+  it("slide_deck: có handlers → hiện xuất và 'Sửa slide bằng AI'; bấm xuất gọi onExport", async () => {
+    const user = userEvent.setup();
+    const onExport = vi.fn();
+    const onSlideAiEdit = vi.fn(async () => undefined);
+    wrap(<ArtifactBody artifactId="a" type="slide_deck" content={deck} onChange={() => undefined} handlers={{ onExport, onSlideAiEdit }} />);
+    expect(await screen.findByTestId("panel-ai")).toBeInTheDocument();
+    await user.type(screen.getByTestId("ai-instruction"), "Rút gọn");
+    await user.click(screen.getByTestId("ai-run"));
+    expect(onSlideAiEdit).toHaveBeenCalledWith("s1", "Rút gọn");
+    await user.click(screen.getByTestId("toolbar-export"));
+    await user.click(await screen.findByTestId("export-pptx"));
+    expect(onExport).toHaveBeenCalledWith("pptx");
+  });
+
+  it("infographic: dựng InfographicView", async () => {
+    wrap(
+      <ArtifactBody
+        artifactId="a"
+        type="infographic"
+        readOnly
+        content={{ title: "Tế bào", orientation: "portrait", palette: "indigo", blocks: [{ id: "b1", type: "stat", value: "42%", label: "Tỉ lệ", citations: [1] }], evidence }}
+      />,
+    );
+    expect(await screen.findByTestId("infographic-view")).toBeInTheDocument();
   });
 });
 

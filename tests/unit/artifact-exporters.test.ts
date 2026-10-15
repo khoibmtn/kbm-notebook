@@ -9,6 +9,7 @@ import { markdownToHtml, renderDocumentHtml } from "@/server/artifacts/exporters
 import { contentToMarkdown } from "@/server/artifacts/exporters/markdown";
 import { renderMindmap } from "@/server/artifacts/exporters/mindmap-render";
 import { docxToPdfLibreOffice, markdownToPdfChromium } from "@/server/artifacts/exporters/pdf";
+import { registerDefaultEngines, registerEngines } from "@/server/artifacts/registry";
 
 const EVIDENCE = [
   { id: "c1", provider: "local" as const, sourceId: "s1", sourceTitle: "Giáo trình sinh học", locator: { page: 12 }, text: "…", score: 1 },
@@ -195,7 +196,12 @@ describe("CSV / Anki / JSON", () => {
   it("định dạng không áp dụng cho loại → 400 unsupported_format", async () => {
     await expect(buildExport({ type: "quiz", title: "x", content: {} }, "svg")).rejects.toMatchObject({ status: 400, code: "unsupported_format" });
     await expect(buildExport({ type: "report", title: "x", content: {} }, "csv")).rejects.toMatchObject({ status: 400 });
-    await expect(buildExport({ type: "slide_deck", title: "x", content: {} }, "pptx")).rejects.toMatchObject({ status: 501, code: "not_implemented" });
+    registerEngines({ slide_deck: null });
+    try {
+      await expect(buildExport({ type: "slide_deck", title: "x", content: {} }, "pptx")).rejects.toMatchObject({ status: 501, code: "not_implemented" });
+    } finally {
+      registerDefaultEngines();
+    }
   });
 });
 

@@ -50,6 +50,7 @@ export default async function SharedArtifactPage({ params }: { params: Promise<{
       artifact={{ id: detail.id, type: detail.type, title: detail.title, content: detail.content, createdByName: detail.createdByName, updatedAt: detail.updatedAt }}
       signedIn={Boolean(session)}
       notebookId={member ? detail.notebookId : undefined}
+      shareToken={token}
     />
   );
 }

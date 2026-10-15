@@ -13,10 +13,12 @@ type Props = {
   signedIn: boolean;
   /** Có → chip trích dẫn mở Source viewer (người xem là thành viên sổ tay); không có → chỉ hiện tooltip. */
   notebookId?: string;
+  /** Token liên kết chia sẻ (trang `/s/[token]`): cho khách đọc ảnh của artifact. */
+  shareToken?: string;
 };
 
 /** Trang chỉ đọc cho artifact chia sẻ (`/s/[token]`, `/a/[artifactId]`): không có chỉnh sửa, không lộ nguồn gốc. */
-export function SharedArtifactView({ artifact, signedIn, notebookId }: Props) {
+export function SharedArtifactView({ artifact, signedIn, notebookId, shareToken }: Props) {
   const t = useT();
   const { locale } = useLocale();
   const Icon = TYPE_ICONS[artifact.type];
@@ -46,7 +48,7 @@ export function SharedArtifactView({ artifact, signedIn, notebookId }: Props) {
       </header>
       <main className="flex-1 p-4 sm:p-6">
         {artifact.content ? (
-          <ArtifactBody artifactId={artifact.id} type={artifact.type} content={artifact.content} readOnly notebookId={notebookId} />
+          <ArtifactBody artifactId={artifact.id} type={artifact.type} content={artifact.content} readOnly notebookId={notebookId} handlers={{ shareToken }} />
         ) : (
           <p className="py-16 text-center text-sm text-muted-foreground">{t("studio.noContent")}</p>
         )}

@@ -11,6 +11,7 @@ import {
 } from "@/lib/artifacts/content";
 import { buildContext } from "@/server/ai/context";
 import { clearMockJson, MockAiProvider, registerMockJson } from "@/server/ai/mock";
+import { registerDefaultEngines, registerEngines } from "@/server/artifacts/registry";
 import { composePrompt } from "@/server/artifacts/prompt";
 import { runGenerator } from "@/server/artifacts/generators";
 import { ArtifactGenerationError } from "@/server/artifacts/generators/common";
@@ -38,7 +39,10 @@ function input(options: Record<string, unknown> = {}) {
   };
 }
 
-afterEach(() => clearMockJson());
+afterEach(() => {
+  clearMockJson();
+  registerDefaultEngines();
+});
 
 describe("schema nội dung", () => {
   it("danh sách loại của lib khớp với defaults.ts", () => {
@@ -185,6 +189,7 @@ describe("generator tạo từ mock có JSON đã đăng ký", () => {
   });
 
   it("slide_deck/infographic ném 501 not_implemented khi chưa có engine", async () => {
+    registerEngines({ slide_deck: null, infographic: null });
     await expect(runGenerator("slide_deck", input())).rejects.toMatchObject({ status: 501, code: "not_implemented" });
     await expect(runGenerator("infographic", input())).rejects.toMatchObject({ status: 501, code: "not_implemented" });
   });

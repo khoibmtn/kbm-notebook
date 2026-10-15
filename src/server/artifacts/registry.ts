@@ -2,6 +2,13 @@ import "server-only";
 import { z } from "zod";
 import { ApiError } from "@/server/api/errors";
 import type { AiProvider } from "@/server/ai/provider";
+import { editSlideWithAi, generateSlideDeck } from "./slides/generate";
+import { exportSlideDeckPptx } from "./slides/export-pptx";
+import { renderSlideDeckHtml } from "./slides/render-html";
+import { slideDeckSchema } from "./slides/types";
+import { generateInfographic } from "./infographic/generate";
+import { exportInfographicSvg, renderInfographicHtml } from "./infographic/export";
+import { infographicSchema } from "./infographic/types";
 import {
   infographicEnvelopeSchema,
   slideDeckEnvelopeSchema,
@@ -10,23 +17,12 @@ import {
 } from "@/lib/artifacts/content";
 
 /**
- * ĐIỂM NỐI DUY NHẤT với engine slide/infographic (mô-đun do nhóm khác viết).
+ * ĐIỂM NỐI DUY NHẤT với engine slide/infographic (docs/06-slide-engine.md).
  *
- * Framework chỉ gọi engine qua `engines.slide_deck` / `engines.infographic` ở file này.
- * Khi mô-đun có mặt (`src/server/artifacts/slides/*`, `src/server/artifacts/infographic/*`), thay khối
- * "STUB" bên dưới bằng:
- *
- *   import { generateSlideDeck } from "./slides/generate";
- *   import { exportSlideDeckPptx } from "./slides/export-pptx";
- *   import { generateInfographic } from "./infographic/generate";
- *   import { exportInfographicSvg } from "./infographic/export";
- *   registerEngines({
- *     slide_deck: { generate: generateSlideDeck, exportPptx: exportSlideDeckPptx },
- *     infographic: { generate: generateInfographic, exportSvg: exportInfographicSvg },
- *   });
- *
- * và (phía giao diện) làm tương tự trong `src/components/studio/engines.tsx`.
- * Chưa có engine → type vẫn được đăng ký nhưng tạo/xuất trả HTTP 501 `not_implemented`, không bao giờ sinh nội dung giả.
+ * Framework chỉ gọi engine qua `getSlideEngine()` / `getInfographicEngine()` ở file này. Khối "WIRING" cuối file
+ * đăng ký engine thật (`slides/*`, `infographic/*`); test có thể `registerEngines({ slide_deck: null })` để mô phỏng
+ * môi trường chưa có engine (khi đó tạo/xuất trả HTTP 501 `not_implemented`, không bao giờ sinh nội dung giả) hoặc
+ * tiêm engine giả để kiểm tra đường nối.
  */
 
 export type SlideDeckContent = z.infer<typeof slideDeckEnvelopeSchema>;
@@ -46,11 +42,24 @@ export type SlideDeckEngine = {
     options: { slideCount?: number | "auto"; style?: "detailed" | "concise"; language?: string; audience?: string; includeImages?: boolean };
   }): Promise<SlideDeckContent>;
   exportPptx(content: SlideDeckContent, opts?: { resolveImage?: (fileId: string) => Promise<Buffer | null> }): Promise<Buffer>;
+  /** Viết lại một slide bằng AI (trả toàn bộ deck với slide đó đã đổi). */
+  editSlide?(input: {
+    content: SlideDeckContent;
+    slideId: string;
+    instruction: string;
+    contextText?: string;
+    provider: AiProvider;
+    model?: string;
+  }): Promise<SlideDeckContent>;
+  /** HTML in được (mỗi slide một trang 1280×720) để Chromium xuất PDF. */
+  renderHtml?(content: SlideDeckContent, opts?: { resolveImageUrl?: (fileId: string) => string }): string;
 };
 
 export type InfographicEngine = {
   generate(input: EngineGenerateInput): Promise<InfographicContent>;
   exportSvg(content: InfographicContent): string | Promise<string>;
+  /** HTML một trang đúng kích thước canvas (Chromium in PDF). */
+  renderHtml?(content: InfographicContent): string;
 };
 
 export type Engines = {
@@ -101,6 +110,54 @@ export function engineAvailability(): Record<ArtifactTypeName, boolean> {
   return out;
 }
 
-/* ============================== STUB (chưa có engine) ============================== */
-// Không đăng ký gì: `engineState` giữ null → mọi thao tác slide_deck/infographic trả 501 `not_implemented`.
-/* ================================================================================= */
+/* ================================== WIRING ================================== */
+
+function parseSlideDeck(content: SlideDeckContent): z.infer<typeof slideDeckSchema> {
+  const r = slideDeckSchema.safeParse(content);
+  if (!r.success) {
+    throw ApiError.badRequest(`Nội dung bài thuyết trình không hợp lệ: ${r.error.issues[0]?.path.join(".") ?? ""} ${r.error.issues[0]?.message ?? ""}`.trim(), "invalid_content");
+  }
+  return r.data;
+}
+
+function parseInfographic(content: InfographicContent): z.infer<typeof infographicSchema> {
+  const r = infographicSchema.safeParse(content);
+  if (!r.success) {
+    throw ApiError.badRequest(`Nội dung infographic không hợp lệ: ${r.error.issues[0]?.path.join(".") ?? ""} ${r.error.issues[0]?.message ?? ""}`.trim(), "invalid_content");
+  }
+  return r.data;
+}
+
+/** Đăng ký engine thật (chạy một lần khi nạp module; test gọi lại để khôi phục sau khi đã gỡ/tiêm engine giả). */
+export function registerDefaultEngines(): void {
+  registerEngines(defaultEngines());
+}
+
+function defaultEngines(): Engines {
+  return {
+    slide_deck: {
+      generate: (input) => generateSlideDeck(input) as Promise<SlideDeckContent>,
+      exportPptx: (content, opts) => exportSlideDeckPptx(parseSlideDeck(content), { resolveImage: opts?.resolveImage }),
+      editSlide: async (input) => (await editSlideWithAi({ ...input, content: parseSlideDeck(input.content) })) as SlideDeckContent,
+      renderHtml: (content, opts) => renderSlideDeckHtml(parseSlideDeck(content), { resolveImageUrl: opts?.resolveImageUrl }),
+    },
+    infographic: {
+      generate: (input) => {
+        const o = input.options as { orientation?: "portrait" | "landscape"; detailLevel?: "low" | "medium" | "high"; language?: string };
+        return generateInfographic({
+          ...input,
+          options: {
+            orientation: o.orientation,
+            detail: o.detailLevel === "high" ? "detailed" : o.detailLevel ? "standard" : undefined,
+            language: o.language,
+          },
+        }) as Promise<InfographicContent>;
+      },
+      exportSvg: (content) => exportInfographicSvg(parseInfographic(content)),
+      renderHtml: (content) => renderInfographicHtml(parseInfographic(content)),
+    },
+  };
+}
+
+registerDefaultEngines();
+/* ============================================================================= */

@@ -32,16 +32,15 @@ export function StudioPanel({ variant = "panel", className }: Props) {
   const t = useT();
   const { notebook, role } = useNotebook();
   const canEdit = hasRole(role, "editor");
-  const { artifacts, engines, error, progress, create, rename, fork, remove, reload } = useArtifacts(notebook.id);
+  const { artifacts, error, progress, create, rename, fork, remove, reload } = useArtifacts(notebook.id);
   const scope = useStudioScope(notebook.id);
   const [customizing, setCustomizing] = useState<ArtifactTypeName | null>(null);
   const [creating, setCreating] = useState<ArtifactTypeName | null>(null);
 
   const noSources = scope.loaded && scope.scopeIds.length === 0;
 
-  const disabledReason = (type: ArtifactTypeName): string | null => {
+  const disabledReason = (): string | null => {
     if (!canEdit) return t("studio.disabled.viewer");
-    if (engines && !engines[type]) return t("studio.disabled.noEngine");
     if (noSources) return t("studio.disabled.noSources");
     return null;
   };
@@ -83,7 +82,7 @@ export function StudioPanel({ variant = "panel", className }: Props) {
       <div className={cn("grid gap-2", variant === "page" ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-2")} data-testid="studio-type-grid">
         {STUDIO_TYPES.map((type) => {
           const Icon = TYPE_ICONS[type];
-          const reason = disabledReason(type);
+          const reason = disabledReason();
           const name = t(TYPE_NAME_KEY[type]);
           const busy = creating === type;
           return (
@@ -101,11 +100,6 @@ export function StudioPanel({ variant = "panel", className }: Props) {
                     <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">{busy ? <Loader2 className="size-4 animate-spin" /> : <Icon className="size-4" aria-hidden />}</span>
                     <span className="text-sm font-medium leading-tight">{name}</span>
                     <span className="line-clamp-2 text-xs text-muted-foreground">{t(TYPE_DESC_KEY[type])}</span>
-                    {engines && !engines[type] && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {t("studio.badge.noEngine")}
-                      </Badge>
-                    )}
                   </button>
                 </TooltipTrigger>
                 {reason && <TooltipContent>{reason}</TooltipContent>}

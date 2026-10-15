@@ -9,13 +9,14 @@ import type {
   QuizContent,
 } from "@/lib/artifacts/content";
 import { t } from "@/lib/i18n";
-import { getInfographicEngine, getSlideEngine, type InfographicContent, type SlideDeckContent } from "../registry";
+import { getInfographicEngine, getSlideEngine, notImplemented, type InfographicContent, type SlideDeckContent } from "../registry";
 import { dataTableToCsv, flashcardsToAnkiTsv, flashcardsToCsv, quizToCsv } from "./csv";
 import { markdownToDocx } from "./docx";
 import { withPage } from "./browser";
 import { contentToMarkdown } from "./markdown";
 import { renderMindmap } from "./mindmap-render";
-import { markdownToPdf } from "./pdf";
+import { htmlToPdfChromium, markdownToPdf } from "./pdf";
+import { inlineSlideImages } from "../slide-images";
 
 export type ExportInput = {
   type: ArtifactTypeName;
@@ -55,6 +56,18 @@ export async function buildExport(input: ExportInput, format: ExportFormat): Pro
     case "docx":
       return out(await markdownToDocx(contentToMarkdown(type, title, content), { title }));
     case "pdf": {
+      if (type === "slide_deck") {
+        const engine = getSlideEngine();
+        if (!engine.renderHtml) throw notImplemented("Xuất PDF bài thuyết trình");
+        // Chromium chạy offline khi xuất → nhúng ảnh (fileId) thành data URL trước khi dựng HTML in.
+        const deck = input.resolveImage ? await inlineSlideImages(content as SlideDeckContent, input.resolveImage) : (content as SlideDeckContent);
+        return out(await htmlToPdfChromium(engine.renderHtml(deck)));
+      }
+      if (type === "infographic") {
+        const engine = getInfographicEngine();
+        if (!engine.renderHtml) throw notImplemented("Xuất PDF infographic");
+        return out(await htmlToPdfChromium(engine.renderHtml(content as InfographicContent)));
+      }
       const { buffer } = await markdownToPdf(contentToMarkdown(type, title, content), title);
       return out(buffer);
     }

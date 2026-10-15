@@ -5,8 +5,8 @@ import { emitToUser } from "@/server/chat/realtime";
 import { db } from "@/server/db";
 import { artifactExports, artifactVersions, files, type Artifact, type ArtifactVersionRow } from "@/server/db/schema";
 import { enqueue } from "@/server/jobs/queue";
-import { canAccessFile } from "@/server/storage/files";
 import { getStorage } from "@/server/storage/local";
+import { readFileBytes } from "./slide-images";
 import { isAsyncExport, isExportFormatAllowed, type ArtifactExportDto, type ArtifactExportEvent, type ExportFormat } from "@/lib/artifacts/meta";
 import { buildExport } from "./exporters";
 import { assertEngineAvailable } from "./registry";
@@ -76,15 +76,7 @@ export async function produceExport(params: {
       title: artifact.title,
       content: version.content,
       versionNo: version.versionNo,
-      resolveImage: async (fileId) => {
-        if (!(await canAccessFile(userId, fileId))) return null;
-        const [f] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
-        if (!f) return null;
-        const stream = await getStorage().getStream(f.storageKey);
-        const chunks: Buffer[] = [];
-        for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
-        return Buffer.concat(chunks);
-      },
+      resolveImage: (fileId) => readFileBytes(userId, fileId),
     },
     format,
   );
@@ -114,7 +106,7 @@ export async function requestExport(params: {
   if (!isExportFormatAllowed(artifact.type, format)) {
     throw ApiError.badRequest(`Định dạng ${format.toUpperCase()} không áp dụng cho loại này`, "unsupported_format");
   }
-  if (format === "pptx" || (artifact.type === "infographic" && format !== "json")) assertEngineAvailable(artifact.type);
+  if (format === "pptx" || ((artifact.type === "infographic" || artifact.type === "slide_deck") && format !== "json")) assertEngineAvailable(artifact.type);
   const version = await resolveVersion(artifact, params.versionId);
   if (isAsyncExport(artifact.type, format)) {
     const payload: ExportArtifactPayload = { artifactId: artifact.id, versionId: version.id, format, notebookId: artifact.notebookId, userId };

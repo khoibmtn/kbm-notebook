@@ -41,11 +41,11 @@ test("Studio: tạo quiz từ nguồn văn bản → làm bài → sửa → xu�
   // Cột Studio có lưới loại artifact và trạng thái rỗng
   const studio = page.getByTestId("studio-panel");
   await expect(studio.getByTestId("studio-card-quiz")).toBeVisible();
-  await expect(studio.getByText("Chưa có artifact nào")).toBeVisible();
+  await expect(studio.getByText("Chưa có artifact nào")).toBeVisible({ timeout: 30_000 }); // lần đầu biên dịch route artifacts (kéo theo engine slide) có thể chậm
   await expect(studio.getByTestId("studio-scope")).toHaveText("1 nguồn");
-  // slide_deck/infographic: chưa có engine → khoá và nói rõ
-  await expect(studio.getByTestId("studio-create-slide_deck")).toBeDisabled();
-  await expect(studio.getByTestId("studio-card-slide_deck").getByText("Chưa có engine")).toBeVisible();
+  // slide_deck/infographic đã có engine thật → thẻ tạo dùng được
+  await expect(studio.getByTestId("studio-create-slide_deck")).toBeEnabled();
+  await expect(studio.getByTestId("studio-create-infographic")).toBeEnabled();
 
   // Hộp Tuỳ chỉnh: prompt mặc định hiển thị, prompt riêng, số câu hỏi
   await studio.getByTestId("studio-customize-quiz").click();
@@ -227,4 +227,41 @@ test("Studio: viewer chỉ xem — không thể tạo", async ({ page, browser }
   const res = await vPage.request.post(`${origin}/api/notebooks/${notebookId}/artifacts`, { headers: { Origin: origin }, data: { type: "quiz" } });
   expect(res.status()).toBe(403);
   await viewerCtx.close();
+});
+
+test("Studio: tạo slide deck → mở editor → sửa tiêu đề tại chỗ → lưu → xuất PPTX tải về có dữ liệu", async ({ page }) => {
+  const { notebookId } = await setup(page, "deck");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/n/${notebookId}`);
+
+  const studio = page.getByTestId("studio-panel");
+  await studio.getByTestId("studio-create-slide_deck").click();
+  const row = studio.getByTestId("artifact-row").first();
+  await expect(row).toHaveAttribute("data-status", "ready", { timeout: 40_000 });
+  await row.getByRole("link").first().click();
+
+  // Editor slide mở trong trang artifact
+  await expect(page.getByTestId("slide-editor")).toBeVisible();
+  await expect(page.getByTestId("toolbar-font")).toHaveText("Inter");
+  const canvasSlide = page.getByTestId("slide-canvas").locator(".kbm-slide");
+  const title = canvasSlide.locator('[data-field="title"]');
+  await title.click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Tiêu đề slide sửa trong e2e");
+  await page.keyboard.press("Enter");
+  await expect(title).toHaveText("Tiêu đề slide sửa trong e2e");
+
+  await page.getByTestId("artifact-save").click();
+  await expect(page.getByTestId("version-menu")).toContainText("v2");
+
+  // Xuất PPTX bằng menu xuất của editor → tải về, giải nén thấy tiêu đề vừa sửa
+  await page.getByTestId("toolbar-export").click();
+  const download = page.waitForEvent("download");
+  await page.getByTestId("export-pptx").click();
+  const file = await download;
+  const bytes = await readFile((await file.path())!);
+  expect(bytes.length).toBeGreaterThan(5_000);
+  const zip = await JSZip.loadAsync(bytes);
+  const slide1 = await zip.file("ppt/slides/slide1.xml")!.async("string");
+  expect(slide1).toContain("Tiêu đề slide sửa trong e2e");
 });

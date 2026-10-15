@@ -111,8 +111,8 @@ export const EXPORT_FORMATS_BY_TYPE: Record<ArtifactTypeName, ExportFormat[]> = 
   flashcards: ["csv", "apkg_tsv", "docx", "pdf", "md", "json"],
   mindmap: ["png", "svg", "md", "json"],
   data_table: ["csv", "docx", "pdf", "md", "json"],
-  slide_deck: ["pptx", "json"],
-  infographic: ["svg", "png", "json"],
+  slide_deck: ["pptx", "pdf", "json"],
+  infographic: ["svg", "png", "pdf", "json"],
 };
 
 export const EXPORT_FORMAT_INFO: Record<ExportFormat, { ext: string; mime: string }> = {
