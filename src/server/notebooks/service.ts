@@ -386,6 +386,11 @@ export async function removeMember(opts: {
 export async function transferOwnership(notebookId: string, fromUserId: string, toUserId: string) {
   if (fromUserId === toUserId) throw ApiError.badRequest("Người nhận phải khác chủ sở hữu hiện tại");
   await db.transaction(async (tx) => {
+    // Khoá hàng của chủ sở hữu hiện tại: hai yêu cầu chuyển quyền đồng thời không thể cùng thành công (L-8)
+    const locked = await tx.execute(
+      sql`select user_id from notebook_members where notebook_id = ${notebookId} and user_id = ${fromUserId} and role = 'owner' for update`,
+    );
+    if (locked.rows.length === 0) throw ApiError.conflict("Bạn không còn là chủ sở hữu của sổ tay này", "not_owner");
     const [target] = await tx
       .select({ role: notebookMembers.role })
       .from(notebookMembers)

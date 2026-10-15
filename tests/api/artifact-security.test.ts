@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { GET as getArtifact } from "@/app/api/artifacts/[artifactId]/route";
+import { GET as getArtifact, PATCH as patchArtifact } from "@/app/api/artifacts/[artifactId]/route";
 import { POST as forkArtifact } from "@/app/api/artifacts/[artifactId]/fork/route";
 import { POST as regenerate } from "@/app/api/artifacts/[artifactId]/regenerate/route";
 import { PATCH as patchShare } from "@/app/api/artifacts/[artifactId]/share/route";
@@ -235,5 +235,54 @@ describe("M-2 · token chia sẻ được thu hồi khi rời link", () => {
 
     const rotated = (await share(a.id, c.owner, "link", { rotateToken: true })).body.artifact!.shareToken!;
     expect(rotated).not.toBe(t3);
+  });
+});
+
+describe("M-5 · toàn vẹn trích dẫn khi sửa nội dung", () => {
+  const ev = (id: string, text: string) => ({ id, provider: "local", sourceId: null, sourceTitle: `Nguồn ${id}`, locator: { page: 1 }, text, score: 1 });
+  async function patch(c: Ctx, artifactId: string, content: unknown) {
+    const res = await patchArtifact(
+      makeRequest(`/api/artifacts/${artifactId}`, { method: "PATCH", user: c.members.editor, body: { content } }),
+      params({ artifactId }),
+    );
+    return { res, body: (await res.json()) as { error?: { code: string; message: string } } };
+  }
+
+  it("không thêm/sửa được bằng chứng; chỉ giữ hoặc bỏ bớt; số trích dẫn phải nằm trong danh sách", async () => {
+    const c = await setup();
+    const a = await insertArtifact(c.notebook.id, c.owner.id, { type: "report", visibility: "notebook" });
+    const base = { markdown: "Ý một [1]. Ý hai [2].", evidence: [ev("e1", "nguyên văn một"), ev("e2", "nguyên văn hai")] };
+    await addVersion(a.id, { content: base, userId: c.owner.id, setStatusReady: true });
+
+    // sửa chữ trong markdown, giữ nguyên bằng chứng → OK
+    expect((await patch(c, a.id, { ...base, markdown: "Ý một đã sửa [1]. Ý hai [2]." })).res.status).toBe(200);
+
+    // trích dẫn giả: sửa nguyên văn của một mục → 400
+    const forgedText = await patch(c, a.id, { ...base, evidence: [ev("e1", "NGUYÊN VĂN GIẢ"), base.evidence[1]] });
+    expect(forgedText.res.status).toBe(400);
+    expect(forgedText.body.error?.code).toBe("evidence_tampered");
+
+    // thêm mục bằng chứng mới → 400
+    const added = await patch(c, a.id, { ...base, evidence: [...base.evidence, ev("e3", "mới")] });
+    expect(added.body.error?.code).toBe("evidence_tampered");
+
+    // [3] không trỏ tới mục nào → 400
+    const badCite = await patch(c, a.id, { ...base, markdown: "Ý ba [3]." });
+    expect(badCite.res.status).toBe(400);
+    expect(badCite.body.error?.code).toBe("invalid_citation");
+
+    // bỏ bớt một mục và cập nhật markdown cho khớp → OK
+    expect((await patch(c, a.id, { markdown: "Chỉ còn ý một [1].", evidence: [base.evidence[0]] })).res.status).toBe(200);
+  });
+
+  it("mảng citations có cấu trúc (quiz/slide/…) cũng phải nằm trong danh sách", async () => {
+    const c = await setup();
+    const a = await insertArtifact(c.notebook.id, c.owner.id, { type: "flashcards", visibility: "notebook" });
+    const base = { cards: [{ id: "c1", front: "Hỏi", back: "Đáp", citations: [1] }], evidence: [ev("e1", "nguyên văn")] };
+    await addVersion(a.id, { content: base, userId: c.owner.id, setStatusReady: true });
+    const bad = await patch(c, a.id, { ...base, cards: [{ id: "c1", front: "Hỏi", back: "Đáp", citations: [1, 5] }] });
+    expect(bad.res.status).toBe(400);
+    expect(bad.body.error?.code).toBe("invalid_citation");
+    expect((await patch(c, a.id, { ...base, cards: [{ id: "c1", front: "Hỏi 2", back: "Đáp", citations: [1] }] })).res.status).toBe(200);
   });
 });

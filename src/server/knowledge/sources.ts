@@ -26,7 +26,7 @@ import { assertIngestBudget } from "./ingest/budget";
 import type { Span } from "./ingest/chunk";
 
 /** Payload của job `ingest_source`. */
-export type IngestPayload = { sourceId: string; notebookId: string; userId: string };
+export type IngestPayload = { sourceId: string; notebookId: string; userId: string; /** Nguồn riêng tư: tiến độ job chỉ báo cho chủ nguồn. */ private?: boolean };
 
 /** Dòng nguồn không kèm văn bản đầy đủ và không kèm spans (nhẹ cho danh sách). */
 export type SourceListRow = Omit<Source, "rawText">;
@@ -209,7 +209,12 @@ export async function getSourceDetail(row: Source, viewer: { userId: string; rol
 /* -------------------------------------------------------------------------- */
 
 async function enqueueIngest(row: Source): Promise<void> {
-  const payload: IngestPayload = { sourceId: row.id, notebookId: row.notebookId, userId: row.createdBy };
+  const payload: IngestPayload = {
+    sourceId: row.id,
+    notebookId: row.notebookId,
+    userId: row.createdBy,
+    ...(row.visibility === "private" ? { private: true } : {}),
+  };
   await enqueue("ingest_source", payload);
 }
 
@@ -403,7 +408,8 @@ export async function deleteSource(row: Source): Promise<void> {
     const noteId = row.metadata?.note_id;
     if (typeof noteId === "string") await tx.update(notes).set({ isSource: false }).where(eq(notes.id, noteId));
   });
-  emitSourceEvent({ ...row }, "deleted", { toNotebook: true });
+  // Nguồn riêng tư chưa từng hiện với ai khác → chỉ báo cho chủ nguồn (không lộ id/người tạo cho cả sổ tay)
+  emitSourceEvent({ ...row }, "deleted", { toNotebook: row.visibility === "shared" });
   // Trả lại dung lượng: tệp gốc chỉ còn dùng cho nguồn này thì xoá luôn (L-5).
   await deleteFileIfUnreferenced(row.fileId, { exceptSourceId: row.id }).catch(() => {});
 }

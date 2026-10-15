@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
 import { canViewArtifact } from "@/server/auth/permissions";
 import { emitToChannel } from "@/server/chat/realtime";
@@ -303,10 +303,12 @@ export async function editMessage(
   return dto;
 }
 
-/** Xoá mềm: ẩn với mọi người. Chỉ tin của chính mình, hoặc admin+ của notebook. */
+/** Xoá mềm: ẩn với mọi người. Chỉ tin của chính mình, hoặc admin+ của notebook (không áp dụng cho DM). */
 export async function deleteMessage(access: ChannelAccess, actor: Actor, messageId: string): Promise<void> {
   const row = await loadMessage(access, messageId, { allowRecalled: true });
-  if (row.senderId !== actor.id && !hasRole(access.role, "admin")) throw ApiError.forbidden();
+  // Quyền "mod" của admin+ chỉ áp cho kênh chung/chủ đề; trong tin nhắn riêng (DM) mỗi người chỉ xoá được tin của mình (L-9)
+  const canModerate = access.channel.type !== "dm" && hasRole(access.role, "admin");
+  if (row.senderId !== actor.id && !canModerate) throw ApiError.forbidden();
   await db.update(teamMessages).set({ deletedAt: new Date(), pinned: false }).where(eq(teamMessages.id, row.id));
   emitToChannel(access.channel.id, "message:delete", {
     notebookId: access.channel.notebookId,
@@ -503,10 +505,18 @@ export async function attachmentsToSources(
 
   const out: ToSourceResult[] = [];
   for (const a of picked) {
+    // Chỉ khử trùng theo nguồn người gọi XEM ĐƯỢC (không trả id/tên nguồn riêng tư của người khác) — L-14
     const [dup] = await db
       .select()
       .from(sources)
-      .where(and(eq(sources.notebookId, access.channel.notebookId), eq(sources.fileId, a.fileId), isNull(sources.deletedAt)))
+      .where(
+        and(
+          eq(sources.notebookId, access.channel.notebookId),
+          eq(sources.fileId, a.fileId),
+          isNull(sources.deletedAt),
+          or(eq(sources.visibility, "shared"), eq(sources.createdBy, actor.id)),
+        ),
+      )
       .limit(1);
     if (dup) {
       out.push({ id: dup.id, title: dup.title, status: dup.status, existing: true, attachmentId: a.id });

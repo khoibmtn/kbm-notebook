@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { ApiError } from "@/server/api/errors";
+import { ApiError, isUuid } from "@/server/api/errors";
 import { enforceUserLimit } from "@/server/api/limits";
 import { verifiedEmailCondition, verifiedEmailRaw } from "@/server/auth/email-verified";
 import { canViewArtifact, getNotebookRole, hasRole, type Role } from "@/server/auth/permissions";
@@ -39,6 +39,7 @@ import type {
 } from "@/lib/artifacts/meta";
 import { t } from "@/lib/i18n";
 import { contentToMarkdown } from "./exporters/markdown";
+import { assertContentIntegrity } from "./integrity";
 import { assertEngineAvailable } from "./registry";
 import { privateSourceIdsAmong } from "@/server/knowledge/sources";
 import { resolveScopeSourceIds } from "./evidence";
@@ -108,7 +109,7 @@ export async function loadArtifactAccess(
   opts: { shareToken?: string | null; notebookId?: string } = {},
 ): Promise<ArtifactAccess> {
   const notFound = () => ApiError.notFound("Không tìm thấy artifact");
-  if (!/^[0-9a-f-]{36}$/i.test(artifactId)) throw notFound();
+  if (!isUuid(artifactId)) throw notFound();
   const [artifact] = await db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1);
   if (!artifact || artifact.deletedAt) throw notFound();
   if (opts.notebookId && artifact.notebookId !== opts.notebookId) throw notFound();
@@ -323,7 +324,7 @@ export async function listVersions(artifactId: string): Promise<ArtifactVersionD
 }
 
 export async function getVersion(artifactId: string, versionId: string): Promise<ArtifactVersionRow> {
-  if (!/^[0-9a-f-]{36}$/i.test(versionId)) throw ApiError.notFound("Không tìm thấy phiên bản");
+  if (!isUuid(versionId)) throw ApiError.notFound("Không tìm thấy phiên bản");
   const [v] = await db
     .select()
     .from(artifactVersions)
@@ -466,6 +467,11 @@ export async function updateArtifact(access: ArtifactAccess, userId: string, inp
         parsed.error.issues,
       );
     }
+    // Bằng chứng/trích dẫn phải khớp với những gì server đã tạo (không dựng trích dẫn giả) — M-5
+    const [baseRow] = a.currentVersionId
+      ? await db.select({ content: artifactVersions.content }).from(artifactVersions).where(eq(artifactVersions.id, a.currentVersionId)).limit(1)
+      : [];
+    assertContentIntegrity(parsed.data, baseRow?.content);
     version = await addVersion(a.id, {
       content: parsed.data,
       userId,
@@ -628,7 +634,7 @@ export async function addShare(artifactId: string, target: { userId?: string; em
 }
 
 export async function removeShare(artifactId: string, shareId: string): Promise<void> {
-  if (!/^[0-9a-f-]{36}$/i.test(shareId)) throw ApiError.notFound("Không tìm thấy lượt chia sẻ");
+  if (!isUuid(shareId)) throw ApiError.notFound("Không tìm thấy lượt chia sẻ");
   const res = await db
     .delete(artifactShares)
     .where(and(eq(artifactShares.id, shareId), eq(artifactShares.artifactId, artifactId)))

@@ -5,9 +5,7 @@ import { clientIp } from "@/server/api/client-ip";
 import { requireUser } from "@/server/auth/session";
 import { canAccessFile, canAccessFileViaShare, getFile } from "@/server/storage/files";
 import { getStorage } from "@/server/storage/local";
-
-// Các MIME có thể thực thi script trong trình duyệt → luôn tải xuống, không hiển thị inline.
-const FORCE_DOWNLOAD = /^(text\/html|image\/svg\+xml|application\/xhtml\+xml|text\/xml|application\/xml)/i;
+import { isInlineSafe, safeServedMime } from "@/server/storage/serve";
 
 /** Số lượt truy cập tệp bằng `?share=` mỗi IP mỗi phút. */
 const SHARE_RATE_LIMIT = 300;
@@ -38,11 +36,12 @@ export const GET = handleRoute<{ id: string }>(async (req, { params }) => {
   } catch {
     throw ApiError.notFound("Tệp không còn trên bộ nhớ");
   }
-  const download = new URL(req.url).searchParams.get("download") === "1" || FORCE_DOWNLOAD.test(file.mime);
+  const mime = safeServedMime(file.mime);
+  const download = new URL(req.url).searchParams.get("download") === "1" || !isInlineSafe(mime);
   const encoded = encodeURIComponent(file.originalName).replace(/['()]/g, escape);
   return new Response(Readable.toWeb(stream) as unknown as ReadableStream, {
     headers: {
-      "Content-Type": file.mime,
+      "Content-Type": mime,
       "Content-Length": String(file.sizeBytes),
       "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encoded}`,
       "Cache-Control": "private, max-age=0, must-revalidate",

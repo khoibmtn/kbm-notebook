@@ -102,7 +102,9 @@ export function resolvePrompt(type: ArtifactType, override?: PromptOverride | nu
 }
 
 export function renderUserPrompt(template: PromptTemplate, instructions = ""): string {
-  return template.user.replace("{{instructions}}", instructions.trim()).trim();
+  const text = instructions.trim();
+  // Hàm thay thế: `$&`, `` $` `` trong chỉ dẫn của người dùng không được diễn giải như mẫu thay thế (L-12)
+  return template.user.replace("{{instructions}}", () => text).trim();
 }
 
 export function isArtifactType(v: string): v is ArtifactType {

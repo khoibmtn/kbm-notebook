@@ -54,7 +54,8 @@ async function resolveRefs(
       let available = a.deletedAt == null;
       // Artifact chuyển về riêng tư sau khi chia sẻ: chỉ người có quyền thấy mới mở được.
       if (available && a.visibility === "private") available = await canViewArtifact(viewerId, a);
-      out.set(`artifact:${a.id}`, { type: "artifact", id: a.id, title: a.title, subtype: a.type, available });
+      // Mục không còn khả dụng với người xem (đã chuyển riêng tư/xoá): không lộ tiêu đề
+      out.set(`artifact:${a.id}`, { type: "artifact", id: a.id, title: available ? a.title : "", subtype: a.type, available });
     }
   }
   const sourceIds = byType("source");
@@ -62,7 +63,7 @@ async function resolveRefs(
     const rows = await db.select().from(sources).where(and(inArray(sources.id, sourceIds), eq(sources.notebookId, notebookId)));
     for (const s of rows) {
       const available = s.deletedAt == null && (s.visibility === "shared" || s.createdBy === viewerId);
-      out.set(`source:${s.id}`, { type: "source", id: s.id, title: s.title, subtype: s.kind, available });
+      out.set(`source:${s.id}`, { type: "source", id: s.id, title: available ? s.title : "", subtype: s.kind, available });
     }
   }
   const noteIds = byType("note");
@@ -70,7 +71,7 @@ async function resolveRefs(
     const rows = await db.select().from(notes).where(and(inArray(notes.id, noteIds), eq(notes.notebookId, notebookId)));
     for (const n of rows) {
       const available = n.deletedAt == null && (n.visibility === "shared" || n.createdBy === viewerId);
-      out.set(`note:${n.id}`, { type: "note", id: n.id, title: n.title, subtype: "note", available });
+      out.set(`note:${n.id}`, { type: "note", id: n.id, title: available ? n.title : "", subtype: "note", available });
     }
   }
   // Tham chiếu không còn trong DB.

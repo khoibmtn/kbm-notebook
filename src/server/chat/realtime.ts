@@ -84,10 +84,13 @@ export type JobProgressPayload = {
   error?: string;
 };
 
-/** Phát tiến độ job tới notebook/user nếu payload job có `notebookId`/`userId`. */
+/**
+ * Phát tiến độ job tới notebook/user nếu payload job có `notebookId`/`userId`.
+ * Job của nội dung RIÊNG TƯ (`payload.private === true`) chỉ báo cho `userId`, không báo cả sổ tay (thông báo lỗi có thể lộ tên nguồn).
+ */
 export function emitJobProgress(jobPayload: unknown, data: JobProgressPayload): void {
   if (!jobPayload || typeof jobPayload !== "object") return;
-  const p = jobPayload as { notebookId?: unknown; userId?: unknown };
-  if (typeof p.notebookId === "string") emitToNotebook(p.notebookId, "job:progress", data);
+  const p = jobPayload as { notebookId?: unknown; userId?: unknown; private?: unknown };
+  if (typeof p.notebookId === "string" && p.private !== true) emitToNotebook(p.notebookId, "job:progress", data);
   if (typeof p.userId === "string") emitToUser(p.userId, "job:progress", data);
 }
