@@ -10,6 +10,7 @@ import { buildContext } from "@/server/ai/context";
 import { composeChatSystem, renderChatUserPrompt, resolveChatPrompt, CHAT_PROMPT_KEY } from "@/server/ai/prompts/defaults";
 import { db } from "@/server/db";
 import { conversations, messages, notebooks, userSettings, type MessageScope } from "@/server/db/schema";
+import { resolveChatConnections, retrieveFromConnections, type ConnectionRetrieval } from "@/server/connectors/connections";
 import { retrieve } from "@/server/knowledge/retrieve";
 import { localKnowledgeProvider } from "@/server/knowledge/providers/local";
 import { webKnowledgeProvider } from "@/server/knowledge/providers/web";
@@ -60,6 +61,8 @@ export type PreparedAsk = {
   evidence: Evidence[];
   scope: ChatScope;
   adjustments: ScopeAdjustReason[];
+  /** Chi tiết cho `connection_error`: nhãn kết nối + lỗi thật (mỗi kết nối lỗi một dòng). */
+  adjustmentDetails: string[];
   /** Sinh sự kiện SSE; hủy bằng `signal` thì lưu phần trả lời đã có (nếu có). */
   run(signal?: AbortSignal): AsyncGenerator<AskStreamEvent>;
 };
@@ -152,8 +155,39 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
     useWeb = false;
     adjustments.push("web_not_allowed");
   }
-  if (requested.connectionIds?.length) adjustments.push("connections_unavailable");
-  const scope: ChatScope = { sourceIds, useWeb };
+  // Kết nối ngoài: chỉ dùng kết nối của chính mình hoặc đã chia sẻ cho thành viên (403 nếu không); Enterprise không có chat.
+  const chatConnections = requested.connectionIds?.length
+    ? await resolveChatConnections({ notebookId, userId, connectionIds: requested.connectionIds })
+    : { providers: [], skipped: 0 };
+  if (requested.connectionIds?.length && chatConnections.providers.length === 0) adjustments.push("connections_unavailable");
+  const scope: ChatScope = {
+    sourceIds,
+    useWeb,
+    ...(chatConnections.providers.length > 0 ? { connectionIds: chatConnections.providers.map((p) => p.connectionId) } : {}),
+  };
+
+  // Bằng chứng: kho cục bộ + kết nối ngoài + web. Truy hồi TRƯỚC khi lưu câu hỏi để lỗi kết nối không để lại tin nhắn mồ côi.
+  const rq = { query: retrievalQuery(question, prior), notebookId, userId };
+  const local = deps.local ?? localKnowledgeProvider;
+  const noConnections: ConnectionRetrieval = { evidence: [], errors: [] };
+  const [localEvidence, connectionResult, webEvidence] = await Promise.all([
+    sourceIds.length > 0 ? retrieve({ ...rq, sourceIds, topK: LOCAL_TOP_K }, [local]) : Promise.resolve([] as Evidence[]),
+    chatConnections.providers.length > 0 ? retrieveFromConnections(chatConnections.providers, rq) : Promise.resolve(noConnections),
+    useWeb
+      ? (deps.web ?? webKnowledgeProvider).retrieve({ ...rq, topK: 6 }).catch((err: unknown) => {
+          console.error("[chat] web retrieval failed", err);
+          return [] as Evidence[];
+        })
+      : Promise.resolve([] as Evidence[]),
+  ]);
+  const adjustmentDetails = connectionResult.errors.map((e) => `${e.label}: ${e.message}`);
+  if (adjustmentDetails.length > 0) adjustments.push("connection_error");
+  if (connectionResult.errors.length > 0 && localEvidence.length + connectionResult.evidence.length + webEvidence.length === 0) {
+    // Không có gì để trả lời và nguyên nhân là kết nối lỗi: báo lỗi thật thay vì "không tìm thấy trong nguồn".
+    throw new ApiError(502, "connector_error", adjustmentDetails.join("; "));
+  }
+  // Bằng chứng kết nối được nối SAU kho cục bộ; đánh số [n] liên tục.
+  const { evidence, contextText } = buildContext([...localEvidence, ...connectionResult.evidence, ...webEvidence]);
 
   if (!userMessage) {
     [userMessage] = await db
@@ -165,20 +199,6 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
     .update(conversations)
     .set({ ...(conversation.title ? {} : { title: titleFromQuestion(question) }), updatedAt: new Date() })
     .where(eq(conversations.id, conversation.id));
-
-  // Bằng chứng: kho cục bộ + web (tách bước), connections chưa có (P5) nên không tạo gì.
-  const rq = { query: retrievalQuery(question, prior), notebookId, userId };
-  const local = deps.local ?? localKnowledgeProvider;
-  const [localEvidence, webEvidence] = await Promise.all([
-    sourceIds.length > 0 ? retrieve({ ...rq, sourceIds, topK: LOCAL_TOP_K }, [local]) : Promise.resolve([] as Evidence[]),
-    useWeb
-      ? (deps.web ?? webKnowledgeProvider).retrieve({ ...rq, topK: 6 }).catch((err: unknown) => {
-          console.error("[chat] web retrieval failed", err);
-          return [] as Evidence[];
-        })
-      : Promise.resolve([] as Evidence[]),
-  ]);
-  const { evidence, contextText } = buildContext([...localEvidence, ...webEvidence]);
 
   // Prompt
   const [settings] = await db.select({ prompts: userSettings.prompts }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
@@ -195,7 +215,13 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
   const finalScope = scope;
 
   async function* run(signal?: AbortSignal): AsyncGenerator<AskStreamEvent> {
-    for (const reason of adjustments) yield { type: "scope_adjusted", reason, scope: finalScope };
+    for (const reason of adjustments) {
+      if (reason === "connection_error") {
+        for (const detail of adjustmentDetails) yield { type: "scope_adjusted", reason, scope: finalScope, detail };
+      } else {
+        yield { type: "scope_adjusted", reason, scope: finalScope };
+      }
+    }
     yield { type: "meta", messageId: assistantMessageId, userMessageId, evidence, scope: finalScope };
 
     let raw = "";
@@ -273,6 +299,7 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
     evidence,
     scope: finalScope,
     adjustments,
+    adjustmentDetails,
     run,
   };
 }
@@ -303,5 +330,6 @@ export async function askQuestion(params: AskParams, deps: AskDeps = {}): Promis
     evidence: prepared.evidence,
     scope: prepared.scope,
     scopeAdjustments: prepared.adjustments,
+    ...(prepared.adjustmentDetails.length > 0 ? { scopeAdjustmentDetails: prepared.adjustmentDetails } : {}),
   };
 }

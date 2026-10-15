@@ -45,12 +45,16 @@ export type ChatMessageDto = {
   createdAt: string;
 };
 
-export type ScopeAdjustReason = "web_not_allowed" | "connections_unavailable";
+/**
+ * `connections_unavailable`: không có kết nối nào dùng được cho hỏi đáp (vd. chỉ chọn NotebookLM Enterprise — không có chat API).
+ * `connection_error`: một kết nối ngoài lỗi khi truy vấn (kèm `detail`); câu trả lời dùng các kho còn lại.
+ */
+export type ScopeAdjustReason = "web_not_allowed" | "connections_unavailable" | "connection_error";
 
 /** Sự kiện SSE của `POST …/conversations/[id]/messages`. */
 export type AskStreamEvent =
   | { type: "meta"; messageId: string; userMessageId: string; evidence: Evidence[]; scope: ChatScope }
-  | { type: "scope_adjusted"; reason: ScopeAdjustReason; scope: ChatScope }
+  | { type: "scope_adjusted"; reason: ScopeAdjustReason; scope: ChatScope; detail?: string }
   | { type: "delta"; text: string }
   | {
       type: "done";
@@ -71,6 +75,8 @@ export type AskResult = {
   evidence: Evidence[];
   scope: ChatScope;
   scopeAdjustments: ScopeAdjustReason[];
+  /** Mô tả chi tiết cho `connection_error` (nhãn kết nối + lỗi thật từ bridge). */
+  scopeAdjustmentDetails?: string[];
 };
 
 /** Ngưỡng cosine (0–1): bằng chứng tốt nhất thấp hơn mức này → coi là thiếu bằng chứng. */

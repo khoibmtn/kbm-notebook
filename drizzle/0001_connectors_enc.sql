@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "connectors_enc" text;

@@ -30,7 +30,9 @@ async function readAll(stream: NodeJS.ReadableStream): Promise<Buffer> {
 
 async function extractForSource(src: Source): Promise<Extracted & { finalUrl?: string }> {
   switch (src.kind) {
-    case "file": {
+    case "file":
+    case "drive": {
+      // Nguồn Google Drive đã được tải về `files` lúc nhập → xử lý như tệp thường.
       if (!src.fileId) throw new IngestError("Nguồn không có tệp đính kèm");
       const [file] = await db.select().from(files).where(eq(files.id, src.fileId)).limit(1);
       if (!file) throw new IngestError("Tệp gốc không còn tồn tại");

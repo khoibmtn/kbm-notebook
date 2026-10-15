@@ -13,6 +13,8 @@ const schema = z.object({
   AI_PROVIDER: z.enum(["gemini", "mock"]).default("gemini"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** `false` = cấm Bridge ở địa chỉ nội bộ/LAN/localhost (khi triển khai máy chủ dùng chung, tránh SSRF). Mặc định cho phép (người dùng tự chạy Bridge trên máy mình). */
+  CONNECTORS_ALLOW_PRIVATE_HOSTS: z.enum(["true", "false"]).default("true"),
   STORAGE_DIR: z.string().default("./storage"),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(50),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -34,6 +36,7 @@ export function env(): Env {
     AI_PROVIDER: empty(process.env.AI_PROVIDER),
     BETTER_AUTH_URL: empty(process.env.BETTER_AUTH_URL),
     NEXT_PUBLIC_APP_URL: empty(process.env.NEXT_PUBLIC_APP_URL),
+    CONNECTORS_ALLOW_PRIVATE_HOSTS: empty(process.env.CONNECTORS_ALLOW_PRIVATE_HOSTS)?.toLowerCase(),
     STORAGE_DIR: empty(process.env.STORAGE_DIR),
     MAX_UPLOAD_MB: empty(process.env.MAX_UPLOAD_MB),
     PORT: empty(process.env.PORT),
@@ -54,4 +57,9 @@ export function resetEnvCache(): void {
 export function googleAuthEnabled(): boolean {
   const e = env();
   return Boolean(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET);
+}
+
+/** Máy chủ có cho phép người dùng trỏ Bridge vào địa chỉ nội bộ/LAN không (mặc định: có). */
+export function privateConnectorHostsAllowed(): boolean {
+  return env().CONNECTORS_ALLOW_PRIVATE_HOSTS === "true";
 }

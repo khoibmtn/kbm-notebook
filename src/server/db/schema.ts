@@ -205,6 +205,8 @@ export const userSettings = pgTable("user_settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   geminiApiKeyEnc: text("gemini_api_key_enc"),
+  /** JSON (AES-256-GCM) cấu hình kết nối ngoài của người dùng: NotebookLM Bridge (URL + token) và Enterprise (dự án + xác thực). Không bao giờ trả về client. */
+  connectorsEnc: text("connectors_enc"),
   defaultChatModel: text("default_chat_model"),
   defaultArtifactModel: text("default_artifact_model"),
   embeddingModel: text("embedding_model").default("gemini-embedding-001").notNull(),
@@ -843,3 +845,5 @@ export type Artifact = typeof artifacts.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Role = (typeof memberRoleEnum.enumValues)[number];
+export type NotebookConnection = typeof notebookConnections.$inferSelect;
+export type ConnectionSource = typeof connectionSources.$inferSelect;
