@@ -22,6 +22,8 @@ export function isInsufficientEvidence(evidence: Evidence[], threshold = INSUFFI
 }
 
 function sourceKey(ev: Evidence): string {
+  // Kết nối ngoài: id nguồn chỉ duy nhất trong từng kết nối.
+  if (ev.connectionId) return `${ev.provider}:${ev.connectionId}:${ev.kind === "external_answer" ? "answer" : (ev.sourceId ?? ev.id)}`;
   if (ev.sourceId) return `${ev.provider}:${ev.sourceId}`;
   if (ev.locator.url) return `${ev.provider}:${ev.locator.url}`;
   return `${ev.provider}:${ev.id}`;
@@ -38,6 +40,7 @@ export function buildSourcesUsed(evidence: Evidence[], used: number[]): SourceUs
     if (!entry) {
       entry = { key, sourceId: ev.sourceId, provider: ev.provider, title: ev.sourceTitle, locators: [], numbers: [] };
       if (ev.locator.url) entry.url = ev.locator.url;
+      else if (ev.externalUrl) entry.url = ev.externalUrl;
       byKey.set(key, entry);
     }
     entry.numbers.push(n);

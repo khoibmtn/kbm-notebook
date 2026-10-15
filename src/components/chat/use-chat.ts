@@ -205,7 +205,8 @@ export function useChat(notebookId: string) {
         for await (const ev of events) {
           switch (ev.type) {
             case "scope_adjusted":
-              toast.message(t(ev.reason === "web_not_allowed" ? "chat.scope.webNotAllowed" : "chat.scope.connectionsUnavailable"));
+              if (ev.reason === "connection_error") toast.error(t("chat.scope.connectionError", { detail: ev.detail ?? "" }));
+              else toast.message(t(ev.reason === "web_not_allowed" ? "chat.scope.webNotAllowed" : "chat.scope.connectionsUnavailable"));
               break;
             case "meta":
               setStreaming((s) => (s ? { ...s, evidence: ev.evidence, phase: "answering" } : s));

@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { EmptyState } from "@/components/shared/empty-state";
-import { AddSourceDialog } from "@/components/sources/add-source-dialog";
+import { ConnectionsSection } from "@/components/connectors/connections-section";
+import { usePushToNotebookLm } from "@/components/connectors/use-push";
+import { useConnections, writableBridgeConnections } from "@/components/connectors/use-connections";
+import { AddSourceDialog, type AddSourceTab } from "@/components/sources/add-source-dialog";
 import { SourceCard, type SourceCardActions } from "@/components/sources/source-card";
 import { SourceViewerSheet } from "@/components/sources/source-viewer";
 import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
@@ -16,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/api-client";
+import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import { hasRole } from "@/lib/roles";
 import type { SourceDto } from "@/lib/sources";
@@ -45,7 +49,10 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
   const selection = useSourceSelection(notebook.id);
   const { prune, add, setAll, toggle, isSelected } = selection;
 
+  const connectionsState = useConnections(notebook.id);
+  const { pushSource } = usePushToNotebookLm(notebook.id);
   const [addOpen, setAddOpen] = useState(initialAddOpen && canEdit);
+  const [addTab, setAddTab] = useState<AddSourceTab>("file");
   const [viewing, setViewing] = useState<string | null>(initialViewSourceId);
   const [renaming, setRenaming] = useState<SourceDto | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -66,7 +73,7 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
   const someChecked = selectedReady.length > 0 && !allChecked;
 
   const onAdded = useCallback(
-    (created: SourceDto[]) => {
+    (created: { id: string }[]) => {
       add(created.map((s) => s.id)); // nguồn mới mặc định được chọn
       void reload();
     },
@@ -94,12 +101,24 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
     onReprocess: (s) => void run(() => reprocess(s.id)),
     onDelete: (s) => setDeleting(s),
     onShareToChat: shareToChat ? (s) => shareToChat({ type: "source", id: s.id, title: s.title }) : undefined,
+    onPush: (s, c) => void pushSource(c, s.id).catch(() => undefined),
+  };
+
+  /** Nguồn dạng tệp chỉ đẩy được qua Bridge (upload); text/url đẩy được cả Enterprise. */
+  const pushTargetsFor = (s: SourceDto): ConnectionDto[] => {
+    const usable = (connectionsState.connections ?? []).filter((c) => c.usable);
+    return s.kind === "text" || s.kind === "url" || s.kind === "youtube" ? usable : writableBridgeConnections(usable);
+  };
+
+  const openAdd = (tab: AddSourceTab) => {
+    setAddTab(tab);
+    setAddOpen(true);
   };
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)} data-testid="sources-panel">
       <div className="space-y-2 border-b p-3">
-        <Button className="w-full" onClick={() => setAddOpen(true)} disabled={!canEdit} data-testid="add-source-button">
+        <Button className="w-full" onClick={() => openAdd("file")} disabled={!canEdit} data-testid="add-source-button">
           <Plus /> {t("sources.add")}
         </Button>
         {!canEdit && <p className="text-xs text-muted-foreground">{t("sources.readOnlyHint")}</p>}
@@ -147,7 +166,7 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
             description={t("sources.emptyDescription")}
             action={
               canEdit ? (
-                <Button onClick={() => setAddOpen(true)}>
+                <Button onClick={() => openAdd("file")}>
                   <Plus /> {t("sources.add")}
                 </Button>
               ) : undefined
@@ -164,13 +183,26 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
                 onSelectedChange={() => toggle(s.id)}
                 actions={actions}
                 canEdit={canEdit}
+                pushTargets={canEdit ? pushTargetsFor(s) : undefined}
               />
             ))}
           </ul>
         )}
       </div>
 
-      <AddSourceDialog notebookId={notebook.id} open={addOpen} onOpenChange={setAddOpen} maxUploadMb={maxUploadMb} onAdded={onAdded} />
+      <ConnectionsSection state={connectionsState} notebookId={notebook.id} canEdit={canEdit} onAdd={() => openAdd("connect")} onImported={() => void reload()} />
+
+      <AddSourceDialog
+        notebookId={notebook.id}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        tab={addTab}
+        onTabChange={setAddTab}
+        maxUploadMb={maxUploadMb}
+        onAdded={onAdded}
+        connections={connectionsState.connections ?? []}
+        onConnected={() => void connectionsState.reload()}
+      />
 
       <SourceViewerSheet
         notebookId={notebook.id}

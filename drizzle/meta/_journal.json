@@ -8,6 +8,13 @@
       "when": 1792044607712,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792051451912,
+      "tag": "0001_connectors_enc",
+      "breakpoints": true
     }
   ]
 }

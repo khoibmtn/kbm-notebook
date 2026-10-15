@@ -95,6 +95,15 @@ class AddUrlSourceIn(_Strict):
 AddSourceIn = Annotated[AddTextSourceIn | AddUrlSourceIn, Field(discriminator="type")]
 
 
+class FulltextOut(BaseModel):
+    source_id: str
+    title: str | None = None
+    kind: str = "unknown"
+    url: str | None = None
+    text: str = Field(description="Readable plain text of the source as indexed by NotebookLM.")
+    char_count: int = Field(description="len(text) in Python characters.")
+
+
 # --------------------------------------------------------------------------- chat
 class AskIn(_Strict):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20000)]

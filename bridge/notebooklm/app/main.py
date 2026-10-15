@@ -43,6 +43,7 @@ from .models import (
     AskOut,
     CreateNoteIn,
     CreateNotebookIn,
+    FulltextOut,
     GenerateArtifactIn,
     GenerationOut,
     HealthOut,
@@ -241,6 +242,12 @@ async def add_source(notebook_id: str, request: Request) -> SourceOut:
 async def delete_source(notebook_id: str, source_id: str, request: Request) -> Response:
     await _client(request).delete_source(notebook_id, source_id)
     return Response(status_code=204)
+
+
+@router.get("/notebooks/{notebook_id}/sources/{source_id}/fulltext", response_model=FulltextOut)
+async def source_fulltext(notebook_id: str, source_id: str, request: Request) -> FulltextOut:
+    """Readable full text of one source as indexed by NotebookLM (used to import sources elsewhere)."""
+    return await _client(request).get_source_fulltext(notebook_id, source_id)
 
 
 @router.post("/notebooks/{notebook_id}/ask", response_model=AskOut)

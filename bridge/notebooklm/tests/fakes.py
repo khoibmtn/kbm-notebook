@@ -11,6 +11,7 @@ from app.errors import NotAuthenticated, NotFound
 from app.models import (
     ArtifactOut,
     AskOut,
+    FulltextOut,
     GenerationOut,
     NoteOut,
     NotebookOut,
@@ -34,6 +35,7 @@ class FakeClient:
         self.notes: dict[str, list[NoteOut]] = {}
         self.artifacts: dict[str, list[ArtifactOut]] = {}
         self.file_payloads: dict[str, bytes] = {}
+        self.fulltexts: dict[str, str] = {}
         self.ask_references: list[ReferenceOut] = []
         self.uploaded: list[tuple[str, bytes, str | None]] = []
         self.closed = False
@@ -117,6 +119,16 @@ class FakeClient:
         self.sources[notebook_id] = [s for s in self.sources[notebook_id] if s.id != source_id]
         if len(self.sources[notebook_id]) == before:
             raise NotFound("no such source", code="source_not_found")
+
+    async def get_source_fulltext(self, notebook_id: str, source_id: str) -> FulltextOut:
+        self._nb(notebook_id)
+        src = next((s for s in self.sources[notebook_id] if s.id == source_id), None)
+        if src is None:
+            raise NotFound("no such source", code="source_not_found")
+        text = self.fulltexts.get(source_id, f"Nội dung đầy đủ của {src.title}")
+        return FulltextOut(
+            source_id=src.id, title=src.title, kind=src.kind, url=src.url, text=text, char_count=len(text)
+        )
 
     async def ask(
         self,

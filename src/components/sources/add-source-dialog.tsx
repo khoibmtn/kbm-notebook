@@ -2,6 +2,8 @@
 import { AlertCircle, CheckCircle2, CloudUpload, Loader2, X } from "lucide-react";
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
+import { ConnectNotebookPanel } from "@/components/connectors/connect-notebook-panel";
+import { DriveImportPanel } from "@/components/connectors/drive-import-panel";
 import { SourceTypeIcon } from "@/components/sources/source-icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, errorMessage } from "@/lib/api-client";
+import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import { detectFileType, SOURCE_ACCEPT, type SourceDto } from "@/lib/sources";
 import { uploadFormData } from "@/lib/upload";
@@ -22,19 +25,33 @@ type FileItem = { key: string; file: File; state: FileState; percent: number; me
 const CONCURRENCY = 2;
 let seq = 0;
 
+export type AddSourceTab = "file" | "url" | "text" | "connect" | "drive";
+
 type Props = {
   notebookId: string;
+  /** Tab đang mở (điều khiển từ ngoài, vd. nút "Kết nối notebook" mở thẳng tab kết nối). Bỏ trống = tự quản lý. */
+  tab?: AddSourceTab;
+  onTabChange?: (tab: AddSourceTab) => void;
+  /** Kết nối đã có của sổ tay (đánh dấu notebook đã kết nối trong tab "Kết nối notebook"). */
+  connections?: ConnectionDto[];
+  /** Khi vừa kết nối một notebook ngoài. */
+  onConnected?: (connection: ConnectionDto) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Giới hạn dung lượng mỗi tệp (MB) do server cấu hình. */
   maxUploadMb: number;
   /** Gọi khi có nguồn mới được tạo (để tải lại danh sách và tự chọn). */
-  onAdded: (sources: SourceDto[]) => void;
+  onAdded: (sources: { id: string }[]) => void;
 };
 
-export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, onAdded }: Props) {
+export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, onAdded, tab: tabProp, onTabChange, connections = [], onConnected }: Props) {
   const t = useT();
-  const [tab, setTab] = useState("file");
+  const [innerTab, setInnerTab] = useState<AddSourceTab>("file");
+  const tab = tabProp ?? innerTab;
+  const setTab = (v: string) => {
+    setInnerTab(v as AddSourceTab);
+    onTabChange?.(v as AddSourceTab);
+  };
   const [isPrivate, setIsPrivate] = useState(false);
   const [items, setItems] = useState<FileItem[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -167,7 +184,7 @@ export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, o
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg" data-testid="add-source-dialog">
+      <DialogContent className="sm:max-w-xl" data-testid="add-source-dialog">
         <DialogHeader>
           <DialogTitle>{t("sources.add.title")}</DialogTitle>
           <DialogDescription>{t("sources.add.description")}</DialogDescription>
@@ -178,6 +195,12 @@ export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, o
             <TabsTrigger value="file">{t("sources.add.tabFile")}</TabsTrigger>
             <TabsTrigger value="url">{t("sources.add.tabUrl")}</TabsTrigger>
             <TabsTrigger value="text">{t("sources.add.tabText")}</TabsTrigger>
+            <TabsTrigger value="connect" data-testid="tab-connect">
+              {t("connectors.tab.connect")}
+            </TabsTrigger>
+            <TabsTrigger value="drive" data-testid="tab-drive">
+              {t("connectors.tab.drive")}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="file" className="space-y-3">
@@ -335,8 +358,33 @@ export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, o
               </Button>
             </form>
           </TabsContent>
+
+          <TabsContent value="connect">
+            <ConnectNotebookPanel
+              notebookId={notebookId}
+              existing={connections}
+              onConnected={(c) => {
+                onConnected?.(c);
+                onOpenChange(false);
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="drive">
+            <DriveImportPanel
+              notebookId={notebookId}
+              visibility={visibility}
+              onImported={(res) => {
+                if (res.imported.length > 0) {
+                  onAdded(res.imported.map((i) => ({ id: i.sourceId })));
+                  onOpenChange(false);
+                }
+              }}
+            />
+          </TabsContent>
         </Tabs>
 
+        {tab !== "connect" && (
         <div className="flex items-start justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
           <div>
             <Label htmlFor="source-private" className="text-sm">
@@ -346,6 +394,7 @@ export function AddSourceDialog({ notebookId, open, onOpenChange, maxUploadMb, o
           </div>
           <Switch id="source-private" checked={isPrivate} onCheckedChange={setIsPrivate} />
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

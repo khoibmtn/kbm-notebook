@@ -10,9 +10,18 @@ export type EvidenceLocator = {
   endChar?: number;
 };
 
+/** Loại bằng chứng: đoạn trích (mặc định), câu trả lời tổng hợp của kho ngoài (NotebookLM), hoặc kết quả web. */
+export type EvidenceKind = "chunk" | "external_answer" | "web";
+
 export type Evidence = {
   id: string;
   provider: "local" | "web" | "notebooklm-bridge" | "notebooklm-enterprise";
+  /** Mặc định (không đặt) = `chunk`. `external_answer` = câu trả lời NotebookLM trả về, được ghi rõ nguồn khi trích dẫn. */
+  kind?: EvidenceKind;
+  /** Kết nối ngoài tạo ra bằng chứng này (`notebook_connections.id`). */
+  connectionId?: string;
+  /** Liên kết mở notebook ngoài (vd. `https://notebooklm.google.com/notebook/{id}`) — không có trình xem cục bộ. */
+  externalUrl?: string;
   sourceId: string | null;
   sourceTitle: string;
   locator: EvidenceLocator;

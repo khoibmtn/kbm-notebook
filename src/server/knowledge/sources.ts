@@ -234,6 +234,10 @@ export async function createSourceFromFile(input: {
   userId: string;
   file: File;
   visibility: SourceVisibility;
+  /** Mặc định `file`; Google Drive dùng `drive` (cùng cách xử lý, khác nguồn gốc). */
+  kind?: "file" | "drive";
+  /** Trộn vào `metadata` (vd. `driveFileId`). */
+  metadata?: Record<string, unknown>;
 }): Promise<Source> {
   const { file } = input;
   const type = detectFileType(file.name, file.type);
@@ -256,13 +260,13 @@ export async function createSourceFromFile(input: {
     .values({
       notebookId: input.notebookId,
       createdBy: input.userId,
-      kind: "file",
+      kind: input.kind ?? "file",
       title: cleanTitle(file.name),
       mime: stored.mime,
       fileId: stored.id,
       visibility: input.visibility,
       status: "pending",
-      metadata: { fileType: type, progress: 0, originalName: cleanTitle(file.name) },
+      metadata: { fileType: type, progress: 0, originalName: cleanTitle(file.name), ...input.metadata },
     })
     .returning();
   await enqueueIngest(row);
@@ -306,6 +310,8 @@ export async function createSourceFromText(input: {
   title: string;
   text: string;
   visibility: SourceVisibility;
+  /** Trộn vào `metadata` (vd. nguồn gốc nhập từ NotebookLM). */
+  metadata?: Record<string, unknown>;
 }): Promise<Source> {
   const [row] = await db
     .insert(sources)
@@ -318,7 +324,7 @@ export async function createSourceFromText(input: {
       rawText: input.text,
       visibility: input.visibility,
       status: "pending",
-      metadata: { progress: 0 },
+      metadata: { progress: 0, ...input.metadata },
     })
     .returning();
   await enqueueIngest(row);

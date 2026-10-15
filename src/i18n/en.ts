@@ -1,4 +1,5 @@
 import { chatEn } from "./modules/chat.en";
+import { connectorsEn } from "./modules/connectors.en";
 import { slidesEn } from "./modules/slides.en";
 import { studioEn } from "./modules/studio.en";
 import type { MessageKey } from "./vi";
@@ -133,6 +134,7 @@ export const en: Record<MessageKey, string> = {
   "notifications.empty": "No notifications yet",
 
   ...chatEn,
+  ...connectorsEn,
   ...slidesEn,
   ...studioEn,
   "app.name": "KBM Notebook",

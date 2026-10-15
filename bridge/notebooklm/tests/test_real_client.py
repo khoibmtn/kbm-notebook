@@ -93,6 +93,23 @@ async def test_delete_source_checks_existence(bridge, lib) -> None:
     lib.sources.delete.assert_awaited_once_with("n1", "s1")
 
 
+async def test_source_fulltext_checks_existence_and_maps_text(bridge, lib) -> None:
+    lib.sources.list.return_value = [t.Source(id="s1")]
+    with pytest.raises(NotFound) as ei:
+        await bridge.get_source_fulltext("n1", "zzz")
+    assert ei.value.code == "source_not_found"
+    lib.sources.get_fulltext.assert_not_awaited()
+
+    lib.sources.get_fulltext.return_value = t.SourceFulltext(
+        source_id="s1", title="Giải phẫu", content="dòng 1\ndòng 2", _type_code=5, url="https://x"
+    )
+    out = await bridge.get_source_fulltext("n1", "s1")
+    lib.sources.get_fulltext.assert_awaited_once_with("n1", "s1")
+    assert (out.source_id, out.title, out.kind, out.url) == ("s1", "Giải phẫu", "web_page", "https://x")
+    # No parsed document tree -> falls back to the legacy flat content.
+    assert out.text == "dòng 1\ndòng 2" and out.char_count == len("dòng 1\ndòng 2")
+
+
 async def test_ask_maps_answer_and_references(bridge, lib) -> None:
     lib.chat.ask.return_value = t.AskResult(
         answer="Tim [1]",

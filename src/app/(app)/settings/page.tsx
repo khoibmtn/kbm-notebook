@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/shared/app-header";
 import { getT } from "@/i18n/server";
 import { ARTIFACT_TYPES, CHAT_PROMPT_KEY, DEFAULT_CHAT_PROMPT, DEFAULT_PROMPTS } from "@/server/ai/prompts/defaults";
 import { requirePageSession } from "@/server/auth/page-session";
+import { getConnectorsOverview } from "@/server/connectors/settings";
 import { getAiSettings, getProfileSettings, getPrompts } from "@/server/settings/service";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -14,10 +15,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { user } = await requirePageSession("/settings");
   const { tab } = await searchParams;
   const t = await getT();
-  const [profile, ai, prompts] = await Promise.all([
+  const [profile, ai, prompts, connectors] = await Promise.all([
     getProfileSettings(user.id),
     getAiSettings(user.id),
     getPrompts(user.id),
+    getConnectorsOverview(user.id),
   ]);
   const defaults: Record<string, { system: string; user: string }> = {
     [CHAT_PROMPT_KEY]: { system: DEFAULT_CHAT_PROMPT.system, user: DEFAULT_CHAT_PROMPT.user },
@@ -35,6 +37,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           prompts={prompts}
           promptDefaults={defaults}
           artifactTypes={[CHAT_PROMPT_KEY, ...ARTIFACT_TYPES]}
+          connectors={connectors}
         />
       </main>
     </div>

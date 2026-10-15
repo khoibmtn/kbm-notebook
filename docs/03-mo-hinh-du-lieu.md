@@ -6,7 +6,7 @@ Quy ước: `id uuid pk default gen_random_uuid()`, `created_at/updated_at times
 `users(id, name, email unique, email_verified, image, created_at, updated_at)`, `sessions`, `accounts` (Google OAuth tokens: access/refresh, scope), `verifications`. Mở rộng: `user_profiles(user_id pk→users, display_name, title, bio, locale 'vi', theme)`.
 
 ## Settings
-- `user_settings(user_id pk, gemini_api_key_enc text, default_chat_model, default_artifact_model, embedding_model 'gemini-embedding-001', embedding_dim 768, notify_email bool, prompts jsonb)` — `prompts` = map `{ [artifactType]: { system, user, options } }` ghi đè prompt mặc định trong code (`src/server/ai/prompts/defaults.ts`).
+- `user_settings(user_id pk, gemini_api_key_enc text, connectors_enc text (JSON mã hoá: cài đặt NotebookLM Bridge/Enterprise — P5), default_chat_model, default_artifact_model, embedding_model 'gemini-embedding-001', embedding_dim 768, notify_email bool, prompts jsonb)` — `prompts` = map `{ [artifactType]: { system, user, options } }` ghi đè prompt mặc định trong code (`src/server/ai/prompts/defaults.ts`).
 - `app_settings(key pk, value jsonb)` (server-level, admin).
 
 ## Notebook & thành viên

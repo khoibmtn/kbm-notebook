@@ -3,12 +3,16 @@ import { MessageSquare, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useNotebook } from "@/components/notebook/notebook-context";
+import { useConnections, writableBridgeConnections } from "@/components/connectors/use-connections";
+import { usePushToNotebookLm } from "@/components/connectors/use-push";
 import { SourceViewerSheet } from "@/components/sources/source-viewer";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, errorMessage } from "@/lib/api-client";
 import type { ChatMessageDto, ChatScope, Evidence } from "@/lib/chat";
 import { buildSuggestedQuestions } from "@/lib/chat-suggestions";
+import { stripCitations } from "@/lib/citations";
+import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import { hasRole } from "@/lib/roles";
 import { parseViewerHighlight, sourceViewerHref, type ViewerHighlight } from "@/lib/sources";
@@ -22,6 +26,7 @@ import { useChatSources } from "./use-chat-sources";
 
 const MODEL_KEY = "kbm:chat:model";
 const WEB_KEY = (nb: string) => `kbm:chat:web:${nb}`;
+const CONN_KEY = (nb: string) => `kbm:chat:connections:${nb}`;
 
 function readLocal(key: string): string | null {
   try {
@@ -62,6 +67,9 @@ export function ChatPanel() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const [useWeb, setUseWebState] = useState(false);
+  const connectionsState = useConnections(notebook.id);
+  const { pushNote } = usePushToNotebookLm(notebook.id);
+  const [connIds, setConnIdsState] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   const [model, setModelState] = useState<string | null>(null);
@@ -74,6 +82,15 @@ export function ChatPanel() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- khôi phục tuỳ chọn đã lưu sau khi hydrate
     setUseWebState(notebook.allowWeb && readLocal(WEB_KEY(notebook.id)) === "1");
   }, [notebook.id, notebook.allowWeb]);
+  useEffect(() => {
+    try {
+      const raw = readLocal(CONN_KEY(notebook.id));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- khôi phục kết nối đã chọn sau khi hydrate
+      setConnIdsState(raw ? (JSON.parse(raw) as string[]).filter((x) => typeof x === "string") : []);
+    } catch {
+      setConnIdsState([]);
+    }
+  }, [notebook.id]);
   useEffect(() => {
     let cancelled = false;
     api<{ default: string; models: string[] }>("/api/chat/models")
@@ -96,6 +113,13 @@ export function ChatPanel() {
     setUseWebState(v);
     writeLocal(WEB_KEY(notebook.id), v ? "1" : "0");
   };
+  const toggleConnection = (id: string) => {
+    setConnIdsState((cur) => {
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      writeLocal(CONN_KEY(notebook.id), JSON.stringify(next));
+      return next;
+    });
+  };
   const setModel = (m: string) => {
     setModelState(m);
     writeLocal(MODEL_KEY, m);
@@ -105,8 +129,11 @@ export function ChatPanel() {
     const scope: ChatScope = { useWeb: notebook.allowWeb && useWeb };
     // Chưa từng có lựa chọn → để server dùng mọi nguồn sẵn sàng.
     if (isSelectionInitialized(notebook.id)) scope.sourceIds = selectedReady.map((s) => s.id);
+    // Chỉ gửi kết nối còn dùng được cho hỏi đáp (danh sách có thể đã đổi từ lần chọn trước).
+    const usable = (connectionsState.connections ?? []).filter((c) => c.usable && c.supportsChat && connIds.includes(c.id));
+    if (usable.length > 0) scope.connectionIds = usable.map((c) => c.id);
     return scope;
-  }, [notebook.allowWeb, notebook.id, selectedReady, useWeb]);
+  }, [connectionsState.connections, connIds, notebook.allowWeb, notebook.id, selectedReady, useWeb]);
 
   const send = useCallback(
     async (text: string) => {
@@ -128,6 +155,8 @@ export function ChatPanel() {
 
   const openEvidence = useCallback(
     (_n: number, ev: Evidence) => {
+      // Bằng chứng từ kết nối ngoài không có trình xem cục bộ (chip mở popover riêng).
+      if (ev.provider !== "local") return;
       const href = sourceViewerHref(notebook.id, ev);
       if (!href || !ev.sourceId) return;
       setViewer({ sourceId: ev.sourceId, highlight: parseViewerHighlight(new URLSearchParams(href.split("?")[1] ?? "")) });
@@ -137,8 +166,24 @@ export function ChatPanel() {
   );
 
   const base = `/api/notebooks/${notebook.id}`;
+  const noteTargets = useMemo(() => writableBridgeConnections(connectionsState.connections), [connectionsState.connections]);
+  const pushAnswer = useCallback(
+    async (m: ChatMessageDto, connection: ConnectionDto) => {
+      const idx = messages.findIndex((x) => x.id === m.id);
+      const question = [...messages.slice(0, Math.max(idx, 0))].reverse().find((x) => x.role === "user")?.content ?? "";
+      const sourcesLines = (m.sourcesUsed ?? []).map((s) => {
+        const external = s.provider === "notebooklm-bridge" || s.provider === "notebooklm-enterprise";
+        return `- ${s.title}${!external && s.locators.length ? ` — ${s.locators.join(", ")}` : ""}`;
+      });
+      const content = `${stripCitations(m.content).trim()}${sourcesLines.length ? `\n\n${t("chat.pushNote.sources")}\n${sourcesLines.join("\n")}` : ""}`;
+      await pushNote(connection, question.trim().slice(0, 200) || t("chat.pushNote.defaultTitle"), content);
+    },
+    [messages, pushNote, t],
+  );
   const actions = useMemo<Omit<MessageActions, "onRegenerate">>(
     () => ({
+      pushTargets: canWriteNotes ? noteTargets : undefined,
+      onPushNote: canWriteNotes ? pushAnswer : undefined,
       onSaveNote: canWriteNotes
         ? async (m: ChatMessageDto) => {
             try {
@@ -162,7 +207,7 @@ export function ChatPanel() {
         }
       },
     }),
-    [base, canWriteNotes, t],
+    [base, canWriteNotes, noteTargets, pushAnswer, t],
   );
 
   const suggestions = useMemo(() => buildSuggestedQuestions(selectedReady, t), [selectedReady, t]);
@@ -276,6 +321,9 @@ export function ChatPanel() {
         allowWeb={notebook.allowWeb}
         useWeb={useWeb}
         onUseWebChange={setUseWeb}
+        connections={connectionsState.connections ?? []}
+        selectedConnectionIds={connIds}
+        onToggleConnection={toggleConnection}
         models={models}
         model={model}
         onModelChange={setModel}

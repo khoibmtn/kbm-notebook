@@ -276,3 +276,16 @@ Không đổi schema (dùng nguyên các bảng `channels`, `channel_members`, `
 - Di động (< 1024px): thanh tab dưới của `NotebookWorkspace` có thêm tab "Nhóm" (`team` slot = `TeamChat`) kèm huy hiệu tin chưa đọc (`useTeamUnread`).
 - Bảng lệnh ⌘K / Ctrl+K (`components/shared/command-palette.tsx`, gắn ở `(app)/layout.tsx`, nút mở ở `AppHeader` và thanh trên của sổ tay; sự kiện `kbm:open-command-palette`): tìm sổ tay (`/api/notebooks`), trong sổ tay còn tìm nguồn, ghi chú, artifact, kênh nhóm (các API danh sách hiện có, lọc ở máy khách, **không phân biệt dấu** — `foldVi`/`paletteFilter`); hành động nhanh: Tạo sổ tay, Thêm nguồn, Tạo từng loại artifact (editor+ theo vai trò của sổ tay lấy từ danh sách sổ tay), đi tới các trang của sổ tay.
 - Dọn khoá i18n giữ chỗ không còn dùng: `{sources,chat,notes,studio,team}.empty.{title,description}`, `module.comingSoon.description`, `studio.engine.*`, `studio.{disabled,badge}.noEngine`, `studio.editor.*` (thanh công cụ soạn thảo dùng chung khoá `notes.editor.*`).
+
+## 12. Ghi chú triển khai P5 (Kết nối)
+
+Chi tiết đầy đủ, API và mô hình bảo mật: [docs/07-ket-noi.md](07-ket-noi.md). Tóm tắt các điểm khác/bổ sung so với thiết kế ban đầu:
+
+- **Schema**: thêm cột `user_settings.connectors_enc text` (migration `0001_connectors_enc.sql`) giữ JSON mã hoá cài đặt Bridge/Enterprise của người dùng. Các bảng `notebook_connections` / `connection_sources` dùng nguyên như thiết kế; credential được **chụp** vào `credential_enc` khi tạo kết nối.
+- **`Evidence`** (providers/types.ts) có thêm `kind?: 'chunk' | 'external_answer' | 'web'`, `connectionId?`, `externalUrl?`. `buildSourcesUsed` khoá nguồn ngoài theo `connectionId` để hai kết nối không bị gộp.
+- **Provider**: `providers/notebooklm-bridge.ts` (`bridgeResultToEvidence` thuần + `NotebookLmBridgeProvider`, mỗi kết nối một instance) và `providers/notebooklm-enterprise.ts` (`retrieve()` ném `501 not_supported`; chỉ có helper liệt kê/tạo/thêm nguồn/chia sẻ). Client HTTP ở `src/server/connectors/{http,bridge-client,enterprise-client,drive}.ts`; nghiệp vụ kết nối ở `connections.ts`; cài đặt người dùng ở `settings.ts`.
+- **`prepareAsk`** (`chat/ask.ts`): `scope.connectionIds` → `resolveChatConnections` (403 nếu của người khác chưa chia sẻ; id lạ/Enterprise → bỏ qua + `connections_unavailable`) → truy hồi song song cục bộ + kết nối + web; thứ tự bằng chứng **cục bộ → kết nối → web**. Truy hồi chạy **trước** khi lưu tin nhắn người dùng (lỗi kết nối không để lại tin nhắn mồ côi). `ScopeAdjustReason` có thêm `connection_error` (sự kiện `scope_adjusted` kèm `detail`; `AskResult.scopeAdjustmentDetails`).
+- **SSRF của Bridge**: `connectorHttp` cho phép host nội bộ chỉ khi người dùng bật công tắc *và* máy chủ không đặt `CONNECTORS_ALLOW_PRIVATE_HOSTS=false`; luôn chặn link-local/metadata; không theo redirect.
+- **Ingest**: `kind='drive'` được pipeline xử lý như tệp (`extractForSource`); `createSourceFromFile/Text` nhận thêm `kind`/`metadata`.
+- **UI**: `src/components/connectors/*` (thẻ kết nối, hộp chọn notebook, nhập nguồn, tab Drive, menu "Lưu vào NotebookLM"), `components/settings/connectors-settings.tsx`; i18n `src/i18n/modules/connectors.{vi,en}.ts`.
+- **Sidecar**: thêm `GET /notebooks/{id}/sources/{sourceId}/fulltext` (+ pytest).

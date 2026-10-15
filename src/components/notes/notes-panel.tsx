@@ -22,6 +22,9 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PushMenuItems } from "@/components/connectors/push-menu";
+import { useConnections, writableBridgeConnections } from "@/components/connectors/use-connections";
+import { usePushToNotebookLm } from "@/components/connectors/use-push";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +90,9 @@ export function NotesPanel({ initialNoteId = null, onShareToChat: onShareProp, c
   const { notebook, role } = useNotebook();
   const canCreate = hasRole(role, "editor");
   const base = `/api/notebooks/${notebook.id}/notes`;
+  const connectionsState = useConnections(notebook.id);
+  const { pushNote } = usePushToNotebookLm(notebook.id);
+  const noteTargets = writableBridgeConnections(connectionsState.connections);
 
   const [items, setItems] = useState<NoteListItem[] | null>(null);
   const [query, setQuery] = useState("");
@@ -327,6 +333,15 @@ export function NotesPanel({ initialNoteId = null, onShareToChat: onShareProp, c
                         <DropdownMenuItem disabled={note.isSource || !note.contentMd.trim()} onSelect={() => void addToSources(note)} data-testid="note-to-source">
                           <BookMarked /> {note.isSource ? t("notes.action.alreadySource") : t("notes.action.toSource")}
                         </DropdownMenuItem>
+                      )}
+                      {canCreate && (
+                        <PushMenuItems
+                          connections={noteTargets}
+                          label={t("connectors.push.note")}
+                          loading={connectionsState.connections === null}
+                          testId="note-push"
+                          onPush={(c) => void pushNote(c, note.title.trim() || t("connectors.push.noteDefaultTitle"), note.contentMd).catch(() => undefined)}
+                        />
                       )}
                       {onShareToChat && note.visibility === "shared" && (
                         <DropdownMenuItem onSelect={() => onShareToChat(note)} data-testid="note-share-to-chat">
