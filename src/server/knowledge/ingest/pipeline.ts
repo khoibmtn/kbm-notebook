@@ -10,7 +10,8 @@ import { setSourceStatus } from "../sources";
 import { chunkDocument, buildDocument, type Chunk } from "./chunk";
 import { embedTexts } from "./embed";
 import { IngestError } from "./errors";
-import { extractFile, extractPastedText, extractUrl, type Extracted } from "./extract";
+import { extractPastedText, type Extracted } from "./extract";
+import { extractFileSandboxed, extractUrlSandboxed } from "./extract-sandbox";
 import { summarizeSource } from "./summarize";
 
 export type IngestDeps = {
@@ -45,11 +46,12 @@ async function extractForSource(src: Source): Promise<Extracted & { finalUrl?: s
       } catch (err) {
         throw new IngestError("Không đọc được tệp từ bộ nhớ lưu trữ", { cause: err });
       }
-      return extractFile(buf, type);
+      // Trích xuất trong worker thread có timeout (tệp độc hại không được làm treo tiến trình chính)
+      return extractFileSandboxed(buf, type);
     }
     case "url":
       if (!src.url) throw new IngestError("Nguồn không có URL");
-      return extractUrl(src.url);
+      return extractUrlSandboxed(src.url);
     case "text":
       return extractPastedText(src.rawText ?? "");
     case "youtube":

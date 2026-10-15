@@ -1,4 +1,5 @@
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import * as XLSX from "xlsx";
@@ -74,4 +75,23 @@ export function makeXlsx(sheets: { name: string; rows: (string | number)[][] }[]
 export function makeFile(data: Buffer | string, name: string, type: string): File {
   const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
   return new File([new Uint8Array(bytes)], name, { type });
+}
+
+const DIMENSION = /<dimension ref="[^"]+"\s*\/>/;
+
+/** XLSX nhỏ nhưng khai báo vùng dữ liệu A1:XFD1048576 (sheet_to_json không bảo vệ sẽ lặp ~17 tỷ ô). */
+export async function makeMaliciousXlsx(): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(makeXlsx([{ name: "S", rows: [["a", "b"], ["1", "2"]] }]));
+  const name = "xl/worksheets/sheet1.xml";
+  const xml = await zip.file(name)!.async("string");
+  if (!DIMENSION.test(xml)) throw new Error("Không tìm thấy <dimension> trong sheet1.xml");
+  zip.file(name, xml.replace(DIMENSION, '<dimension ref="A1:XFD1048576"/>'));
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+/** PPTX có slide chứa hàng trăm nghìn thẻ <p:sp><a:p> mở mà không đóng (regex lazy cũ là O(n²)). */
+export async function makeMaliciousPptx(): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(await makePptx([{ title: "T", bullets: ["x"] }]));
+  zip.file("ppt/slides/slide1.xml", `<?xml version="1.0"?><p:sld>${"<p:sp><a:p>".repeat(400_000)}</p:sld>`);
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }

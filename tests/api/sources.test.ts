@@ -14,7 +14,7 @@ import { claimJob, registerJobHandler, runJob } from "@/server/jobs/worker";
 import type { Evidence } from "@/server/knowledge/providers/types";
 import type { SourceDetailDto, SourceDto } from "@/lib/sources";
 import { createNotebookWithMembers } from "../helpers/fixtures";
-import { makeBlankPdf, makeDocx, makeFile, makePdf, makePptx } from "../helpers/docs";
+import { makeBlankPdf, makeDocx, makeFile, makeMaliciousPptx, makePdf, makePptx } from "../helpers/docs";
 import { makeRequest, params, type TestUser } from "../helpers/users";
 
 const PDF = "application/pdf";
@@ -297,6 +297,19 @@ describe("lỗi khi xử lý", () => {
     expect(again.status).toBe(409);
     await runIngestJobs();
   });
+
+  it("C-1: PPTX độc hại (hàng trăm nghìn thẻ mở) → failed nhanh với thông báo rõ, không treo worker job", async () => {
+    const { owner, notebook } = await createNotebookWithMembers();
+    const { body } = await doUpload(notebook.id, owner, [
+      makeFile(await makeMaliciousPptx(), "bad.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    ]);
+    const t0 = Date.now();
+    expect(await runIngestJobs()).toEqual(["done"]);
+    expect(Date.now() - t0).toBeLessThan(20_000);
+    const { source } = await detail(notebook.id, owner, body.sources[0].id);
+    expect(source).toMatchObject({ status: "failed" });
+    expect(source!.error).toMatch(/Slide 1/);
+  }, 30_000);
 
   it("lỗi tạm thời: nguồn giữ 'processing' khi còn lượt thử, 'failed' khi hết lượt", async () => {
     const { owner, notebook } = await createNotebookWithMembers();

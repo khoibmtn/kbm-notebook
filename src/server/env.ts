@@ -18,6 +18,10 @@ const schema = z.object({
   STORAGE_DIR: z.string().default("./storage"),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(50),
   PORT: z.coerce.number().int().positive().default(3000),
+  /** Thời gian tối đa (giây) cho việc trích xuất văn bản từ MỘT tệp/trang; quá hạn → worker bị dừng, nguồn `failed`. */
+  INGEST_EXTRACT_TIMEOUT_SEC: z.coerce.number().int().min(1).max(3600).default(120),
+  /** Bộ nhớ heap tối đa (MB) của worker trích xuất; vượt → worker bị dừng, nguồn `failed`. */
+  INGEST_EXTRACT_MAX_MB: z.coerce.number().int().min(64).max(16384).default(1024),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -40,6 +44,8 @@ export function env(): Env {
     STORAGE_DIR: empty(process.env.STORAGE_DIR),
     MAX_UPLOAD_MB: empty(process.env.MAX_UPLOAD_MB),
     PORT: empty(process.env.PORT),
+    INGEST_EXTRACT_TIMEOUT_SEC: empty(process.env.INGEST_EXTRACT_TIMEOUT_SEC),
+    INGEST_EXTRACT_MAX_MB: empty(process.env.INGEST_EXTRACT_MAX_MB),
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
