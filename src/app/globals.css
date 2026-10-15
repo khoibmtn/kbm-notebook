@@ -1,0 +1,94 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Token theo docs/05-thiet-ke-ui.md */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.22 0.01 262);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.01 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.01 262);
+  --primary: oklch(0.55 0.17 262);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.96 0.008 262);
+  --secondary-foreground: oklch(0.25 0.02 262);
+  --muted: oklch(0.97 0.005 262);
+  --muted-foreground: oklch(0.52 0.015 262);
+  --accent: oklch(0.95 0.015 262);
+  --accent-foreground: oklch(0.25 0.04 262);
+  --destructive: oklch(0.6 0.2 25);
+  --success: oklch(0.62 0.17 150);
+  --warning: oklch(0.75 0.16 75);
+  --border: oklch(0.91 0.005 262);
+  --input: oklch(0.91 0.005 262);
+  --ring: oklch(0.55 0.17 262 / 0.5);
+}
+
+.dark {
+  --background: oklch(0.17 0.01 262);
+  --foreground: oklch(0.96 0.005 262);
+  --card: oklch(0.2 0.012 262);
+  --card-foreground: oklch(0.96 0.005 262);
+  --popover: oklch(0.22 0.012 262);
+  --popover-foreground: oklch(0.96 0.005 262);
+  --primary: oklch(0.65 0.17 262);
+  --primary-foreground: oklch(0.13 0.01 262);
+  --secondary: oklch(0.26 0.014 262);
+  --secondary-foreground: oklch(0.96 0.005 262);
+  --muted: oklch(0.24 0.012 262);
+  --muted-foreground: oklch(0.72 0.015 262);
+  --accent: oklch(0.28 0.02 262);
+  --accent-foreground: oklch(0.96 0.005 262);
+  --destructive: oklch(0.65 0.19 25);
+  --success: oklch(0.7 0.16 150);
+  --warning: oklch(0.8 0.15 75);
+  --border: oklch(0.3 0.012 262);
+  --input: oklch(0.34 0.014 262);
+  --ring: oklch(0.65 0.17 262 / 0.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-sm antialiased;
+    min-height: 100%;
+  }
+}
