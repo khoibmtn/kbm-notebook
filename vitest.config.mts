@@ -39,6 +39,8 @@ export default defineConfig({
           env: testEnv,
           testTimeout: 30_000,
           hookTimeout: 60_000,
+          // Các test API dùng chung một DB và hàng đợi job; chạy tuần tự theo tệp để tránh tranh job giữa các tệp.
+          fileParallelism: false,
         },
       },
       {
