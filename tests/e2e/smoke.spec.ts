@@ -29,7 +29,10 @@ test("đăng ký → tạo sổ tay → thấy trên dashboard → mở không g
   await page.getByRole("dialog").getByRole("button", { name: "Tạo", exact: true }).click();
   await expect(page).toHaveURL(/\/n\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
-  await expect(page.getByText("Đang phát triển").first()).toBeVisible();
+  // không gian 3 cột thật (không còn khung giữ chỗ "Đang phát triển")
+  await expect(page.getByTestId("sources-panel")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("studio-panel")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Đang phát triển")).toHaveCount(0);
 
   // Quay về dashboard: thấy thẻ sổ tay với vai trò Chủ sở hữu
   await page.getByRole("link", { name: "Về trang chủ" }).first().click();
