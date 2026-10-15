@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNull, or, sql } from "drizzle-orm";
 import { ApiError, isUuid } from "@/server/api/errors";
 import { hasRole, type Role } from "@/server/auth/permissions";
 import { db } from "@/server/db";
@@ -54,8 +54,9 @@ export async function listNotes(notebookId: string, viewer: Viewer, q?: string):
     const like = `%${escapeLike(term)}%`;
     conds.push(or(sql`${notes.title} ILIKE ${like}`, sql`${notes.contentMd} ILIKE ${like}`)!);
   }
+  // Danh sách chỉ cần đoạn trích: không kéo nguyên `content_md` (tới 500k ký tự mỗi ghi chú) về server (M-11).
   const rows = await db
-    .select()
+    .select({ ...getTableColumns(notes), contentMd: sql<string>`left(${notes.contentMd}, 4000)` })
     .from(notes)
     .where(and(...conds))
     .orderBy(desc(notes.updatedAt));

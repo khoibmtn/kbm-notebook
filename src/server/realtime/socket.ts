@@ -2,6 +2,7 @@ import "server-only";
 import type { Server as HttpServer } from "node:http";
 import { and, eq, isNull } from "drizzle-orm";
 import { Server, type Socket } from "socket.io";
+import { isOriginAllowed, trustedOriginsFromEnv } from "@/lib/request-origin";
 import { getSession } from "@/server/auth/session";
 import { getNotebookRole } from "@/server/auth/permissions";
 import { RT_NAMESPACE, rooms, setIo } from "@/server/chat/realtime";
@@ -24,6 +25,11 @@ export function attachSocketServer(httpServer: HttpServer): Server {
     // Next dev dùng upgrade cho HMR; không được huỷ các upgrade không thuộc Socket.IO.
     destroyUpgrade: false,
     serveClient: false,
+    // Chống CSWSH (L-1): trình duyệt luôn gửi Origin; chỉ nhận cùng host hoặc origin tin cậy. Client không phải trình duyệt (không Origin) vẫn phải qua xác thực cookie.
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, !origin || isOriginAllowed(origin, req.headers["x-forwarded-host"]?.toString() ?? req.headers.host ?? null, trustedOriginsFromEnv()));
+    },
   });
   setIo(io);
 

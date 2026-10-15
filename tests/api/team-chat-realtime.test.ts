@@ -26,9 +26,9 @@ afterAll(async () => {
   await new Promise<void>((resolve) => http.close(() => resolve()));
 });
 
-function open(user: TestUser | null): Promise<Socket> {
+function open(user: TestUser | null, extraHeaders: Record<string, string> = {}): Promise<Socket> {
   return new Promise((resolve, reject) => {
-    const s = connect(url, { transports: ["websocket"], extraHeaders: user ? { cookie: user.cookie } : {}, reconnection: false });
+    const s = connect(url, { transports: ["websocket"], extraHeaders: { ...(user ? { cookie: user.cookie } : {}), ...extraHeaders }, reconnection: false });
     sockets.push(s);
     s.on("connect", () => resolve(s));
     s.on("connect_error", reject);
@@ -52,6 +52,18 @@ async function until<T>(fn: () => T | undefined | false, ms = 3000): Promise<T> 
   }
   throw new Error("hết thời gian chờ sự kiện");
 }
+
+describe("L-1 · Socket.IO kiểm Origin (chống CSWSH)", () => {
+  it("Origin lạ bị từ chối; cùng host hoặc không có Origin thì qua bước này", async () => {
+    const { members } = await chatFixture();
+    await expect(open(members.editor, { origin: "https://evil.example.com" })).rejects.toBeTruthy();
+    const host = new URL(url).host;
+    const ok = await open(members.editor, { origin: `http://${host}` });
+    expect(ok.connected).toBe(true);
+    const noOrigin = await open(members.editor);
+    expect(noOrigin.connected).toBe(true);
+  });
+});
 
 describe("Socket.IO /rt cho chat nhóm", () => {
   it("từ chối kết nối khi chưa đăng nhập", async () => {

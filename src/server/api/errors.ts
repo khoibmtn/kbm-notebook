@@ -1,6 +1,7 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ZodError, type ZodType } from "zod";
+import { isRequestOriginAllowed } from "@/lib/request-origin";
 
 export type ErrorCode =
   | "bad_request"
@@ -111,6 +112,10 @@ export function handleRoute<P = Record<string, string>>(
 ) {
   return async (req: Request, ctx: RouteCtx<P> = { params: Promise.resolve({} as P) }): Promise<Response> => {
     try {
+      // CSRF phòng thủ chiều sâu: request thay đổi trạng thái từ origin/site lạ bị từ chối (L-17).
+      if (!isRequestOriginAllowed(req.method, req.headers)) {
+        throw new ApiError(403, "forbidden_origin", "Yêu cầu bị từ chối vì đến từ nguồn không tin cậy");
+      }
       const result = await requestContext.run({ headers: req.headers }, async () => fn(req, ctx));
       if (result instanceof Response) return result;
       return Response.json(result ?? { ok: true });
@@ -122,6 +127,10 @@ export function handleRoute<P = Record<string, string>>(
 
 /** Đọc JSON body và validate bằng zod. */
 export async function parseBody<T>(schema: ZodType<T>, req: Request): Promise<T> {
+  const contentType = req.headers.get("content-type");
+  if (contentType && !/json/i.test(contentType)) {
+    throw new ApiError(415, "unsupported_media_type", "Nội dung yêu cầu phải có Content-Type: application/json");
+  }
   let raw: unknown;
   try {
     raw = await req.json();

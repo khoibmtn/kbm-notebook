@@ -1,4 +1,4 @@
-import { handleRoute } from "@/server/api/errors";
+import { ApiError, handleRoute } from "@/server/api/errors";
 import { requireNotebookRole } from "@/server/auth/permissions";
 import { requireUser } from "@/server/auth/session";
 import { createConversation, listConversations, toConversationDto } from "@/server/chat/conversations";
@@ -20,7 +20,15 @@ export const POST = handleRoute<P>(async (req, { params }) => {
   const { user } = await requireUser();
   await requireNotebookRole(user.id, id, "viewer");
   const raw = await req.text();
-  const input = createConversationSchema.parse(raw.trim() ? JSON.parse(raw) : {});
+  let body: unknown = {};
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      throw new ApiError(400, "invalid_json", "Nội dung yêu cầu không phải JSON hợp lệ");
+    }
+  }
+  const input = createConversationSchema.parse(body);
   const row = await createConversation(id, user.id, input.title);
   return Response.json({ conversation: toConversationDto(row) }, { status: 201 });
 });

@@ -40,6 +40,14 @@ const schema = z.object({
   INGEST_EXTRACT_MAX_MB: z.coerce.number().int().min(64).max(16384).default(1024),
 });
 
+/** Chuỗi mẫu trong `.env.example` — không được dùng làm khoá thật ở production. */
+export function placeholderSecretProblems(e: { APP_ENCRYPTION_KEY: string; BETTER_AUTH_SECRET: string }): string[] {
+  const problems: string[] = [];
+  if (/^0+$/.test(e.APP_ENCRYPTION_KEY)) problems.push("APP_ENCRYPTION_KEY đang là khoá mẫu toàn số 0 (tạo khoá thật: openssl rand -hex 32)");
+  if (/change-me/i.test(e.BETTER_AUTH_SECRET)) problems.push("BETTER_AUTH_SECRET đang là giá trị mẫu 'change-me…' (tạo chuỗi thật: openssl rand -base64 32)");
+  return problems;
+}
+
 export type Env = z.infer<typeof schema>;
 
 let cached: Env | null = null;
@@ -74,6 +82,11 @@ export function env(): Env {
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Cấu hình môi trường không hợp lệ: ${msg}`);
+  }
+  // Production: từ chối khởi động với khoá/secret mẫu của .env.example (M-9). Build (next build) không đọc env thật nên không bị ảnh hưởng.
+  if (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build") {
+    const problems = placeholderSecretProblems(parsed.data);
+    if (problems.length > 0) throw new Error(`Cấu hình production không an toàn: ${problems.join("; ")}`);
   }
   cached = parsed.data;
   return cached;

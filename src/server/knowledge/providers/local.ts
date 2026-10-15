@@ -75,6 +75,32 @@ function toLocator(c: Candidate): EvidenceLocator {
   return loc;
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+let iterativeScanSupported: boolean | null = null;
+
+/**
+ * Chạy truy vấn vector trong transaction với tham số HNSW phù hợp nhiều sổ tay (M-10): bộ lọc `notebook_id/visibility/status`
+ * được áp dụng SAU khi quét chỉ mục, nên với `ef_search` mặc định (40) top-40 toàn cục có thể không chứa chunk nào của sổ tay hiện tại.
+ * `hnsw.iterative_scan = relaxed_order` (pgvector ≥ 0.8) cho chỉ mục quét tiếp tới khi đủ kết quả sau lọc; bản cũ hơn
+ * không có tham số này nên bỏ qua (thử trong savepoint, nhớ kết quả).
+ */
+export async function withVectorSearchTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL hnsw.ef_search = 100`);
+    if (iterativeScanSupported !== false) {
+      try {
+        await tx.transaction(async (sp) => {
+          await sp.execute(sql`SET LOCAL hnsw.iterative_scan = relaxed_order`);
+        });
+        iterativeScanSupported = true;
+      } catch {
+        iterativeScanSupported = false;
+      }
+    }
+    return fn(tx);
+  });
+}
+
 /** Kho tri thức cục bộ: hybrid search = pgvector cosine + full-text (tsvector), gộp bằng RRF. */
 export class LocalKnowledgeProvider implements KnowledgeProvider {
   readonly kind = "local" as const;
@@ -92,13 +118,15 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
     const [embedding] = await provider.embed([query], { taskType: "RETRIEVAL_QUERY", dim: EMBEDDING_DIM });
 
     const distance = cosineDistance(sourceChunks.embedding, embedding);
-    const vectorQuery = db
-      .select({ ...candidateColumns, distance })
-      .from(sourceChunks)
-      .innerJoin(sources, eq(sources.id, sourceChunks.sourceId))
-      .where(and(where, isNotNull(sourceChunks.embedding)))
-      .orderBy(distance)
-      .limit(CANDIDATES_PER_BRANCH);
+    const vectorQuery = withVectorSearchTx((tx) =>
+      tx
+        .select({ ...candidateColumns, distance })
+        .from(sourceChunks)
+        .innerJoin(sources, eq(sources.id, sourceChunks.sourceId))
+        .where(and(where, isNotNull(sourceChunks.embedding)))
+        .orderBy(distance)
+        .limit(CANDIDATES_PER_BRANCH),
+    );
 
     const ftsText = toWebSearchQuery(query);
     const ftsQuery = ftsText

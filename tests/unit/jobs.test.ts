@@ -117,4 +117,24 @@ describe("job queue", () => {
     expect(await requeueStaleJobs(60_000)).toBeGreaterThanOrEqual(1);
     expect((await getJob(job.id))?.status).toBe("queued");
   });
+
+  it("M-12: job đang chạy lâu làm mới locked_at (heartbeat) nên không bị requeueStaleJobs chạy trùng", async () => {
+    const type = uniqueType();
+    let lockedDuring: Date | null | undefined;
+    registerJobHandler(type, async ({ job }) => {
+      // giả lập job đã khoá từ lâu; chờ heartbeat làm mới
+      await db.update(jobs).set({ lockedAt: new Date(Date.now() - 3_600_000) }).where(eq(jobs.id, job.id));
+      await new Promise((r) => setTimeout(r, 300));
+      lockedDuring = (await getJob(job.id))?.lockedAt;
+      await requeueStaleJobs(60_000);
+      expect((await getJob(job.id))?.status).toBe("running"); // job này không bị coi là bỏ rơi
+      return "ok";
+    });
+    const job = await enqueue(type, {});
+    const claimed = await drain(type);
+    const { runJob } = await import("@/server/jobs/worker");
+    expect(await runJob(claimed!, { heartbeatMs: 40 })).toBe("done");
+    expect(lockedDuring && Date.now() - lockedDuring.getTime() < 10_000).toBe(true);
+    expect((await getJob(job.id))?.status).toBe("done");
+  });
 });

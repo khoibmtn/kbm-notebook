@@ -22,6 +22,7 @@ import {
   deleteSupersededAnswer,
   getConversationOrThrow,
   listMessages,
+  listRecentMessages,
   titleFromQuestion,
   toMessageDto,
   type Message,
@@ -129,7 +130,7 @@ export async function prepareAsk(params: AskParams, deps: AskDeps = {}): Promise
     "Bạn đặt câu hỏi quá nhanh (tối đa 60 câu mỗi 10 phút). Vui lòng thử lại sau khoảng {minutes} phút.",
   );
 
-  const all = await listMessages(conversation.id);
+  const all = await listRecentMessages(conversation.id);
   let question = params.question;
   let userMessage: Message | undefined;
   let supersededId: string | null = null;

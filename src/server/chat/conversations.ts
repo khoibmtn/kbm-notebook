@@ -73,6 +73,17 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
   return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.createdAt), asc(messages.role));
 }
 
+/** Chỉ `limit` tin nhắn gần nhất (cũ → mới): đủ cho lịch sử đưa vào prompt, không đọc lại cả hội thoại dài mỗi lượt hỏi (M-11). */
+export async function listRecentMessages(conversationId: string, limit = 60): Promise<Message[]> {
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId))
+    .orderBy(desc(messages.createdAt), desc(messages.role))
+    .limit(limit);
+  return rows.reverse();
+}
+
 export async function renameConversation(row: Conversation, title: string): Promise<Conversation> {
   const [updated] = await db.update(conversations).set({ title }).where(eq(conversations.id, row.id)).returning();
   return updated;

@@ -85,13 +85,20 @@ export async function claimJob(workerId: string, types = getRegisteredJobTypes()
 
 async function setProgress(job: Job, percent: number): Promise<void> {
   const p = Math.max(0, Math.min(100, Math.round(percent)));
-  await db.execute(sql`UPDATE jobs SET progress = ${p}, updated_at = now() WHERE id = ${job.id}`);
+  await db.execute(sql`UPDATE jobs SET progress = ${p}, updated_at = now(), locked_at = now() WHERE id = ${job.id} AND status = 'running'`);
   emitJobProgress(job.payload, { jobId: job.id, type: job.type, status: "running", progress: p });
 }
 
+/** Chu kỳ báo "còn sống" của job đang chạy (làm mới `locked_at`) — job dài không bị `requeueStaleJobs` chạy trùng (M-12). */
+export const JOB_HEARTBEAT_MS = 60_000;
+
 /** Xử lý một job đã claim: thành công → done; lỗi → retry với backoff hoặc failed. */
-export async function runJob(job: Job): Promise<"done" | "retry" | "failed"> {
+export async function runJob(job: Job, opts: { heartbeatMs?: number } = {}): Promise<"done" | "retry" | "failed"> {
   const handler = handlers.get(job.type);
+  const heartbeat = setInterval(() => {
+    pool.query(`UPDATE jobs SET locked_at = now() WHERE id = $1 AND status = 'running'`, [job.id]).catch(() => {});
+  }, opts.heartbeatMs ?? JOB_HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     if (!handler) throw new Error(`Không có handler cho loại job "${job.type}"`);
     const result = await handler({
@@ -122,6 +129,8 @@ export async function runJob(job: Job): Promise<"done" | "retry" | "failed"> {
     );
     emitJobProgress(job.payload, { jobId: job.id, type: job.type, status: "failed", progress: job.progress, error: message });
     return "failed";
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
