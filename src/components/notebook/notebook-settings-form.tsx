@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PublishNotebookCard } from "@/components/community/publish-notebook-card";
 import { EmojiColorPicker } from "@/components/dashboard/create-notebook-dialog";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { Button } from "@/components/ui/button";
@@ -242,6 +243,7 @@ export function NotebookSettingsForm() {
           <p className="text-sm text-muted-foreground">{t("notebook.settings.readonly")}</p>
         )}
       </form>
+      {role === "owner" && <PublishNotebookCard />}
       {role === "owner" && <DangerZone />}
     </div>
   );

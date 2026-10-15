@@ -101,13 +101,18 @@ export function CommandPalette({ userId }: { userId: string }) {
   const [openCount, setOpenCount] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  /** Nội dung ô tìm của bảng lệnh — dùng cho mục "Tìm toàn bộ…" (chuyển sang /search?q=). */
+  const [searchText, setSearchText] = useState("");
   const openRef = useRef(false);
   useEffect(() => {
     openRef.current = open;
   }, [open]);
   const setOpen = useCallback((o: boolean) => {
     setOpenState(o);
-    if (o) setOpenCount((c) => c + 1);
+    if (o) {
+      setOpenCount((c) => c + 1);
+      setSearchText("");
+    }
   }, []);
   const data = loaded && loaded.openId === openCount ? loaded : null;
 
@@ -190,7 +195,7 @@ export function CommandPalette({ userId }: { userId: string }) {
     <>
       <CommandDialog open={open} onOpenChange={setOpen} title={t("palette.title")} description={t("palette.description")} className="sm:max-w-xl" filter={paletteFilter}>
         <div data-testid="command-palette">
-          <CommandInput placeholder={t("palette.placeholder")} data-testid="palette-input" />
+          <CommandInput placeholder={t("palette.placeholder")} value={searchText} onValueChange={setSearchText} data-testid="palette-input" />
           <CommandList className="max-h-[min(24rem,60vh)]">
             {!data ? (
               <p className="py-6 text-center text-sm text-muted-foreground" role="status">
@@ -330,6 +335,19 @@ export function CommandPalette({ userId }: { userId: string }) {
                     </CommandGroup>
                   </>
                 )}
+
+                <CommandSeparator alwaysRender />
+                <CommandGroup forceMount>
+                  <CommandItem
+                    forceMount
+                    value="__search_all__"
+                    onSelect={() => go(searchText.trim() ? `/search?q=${encodeURIComponent(searchText.trim())}` : "/search")}
+                    data-testid="palette-search-all"
+                  >
+                    <Search />
+                    <span className="truncate">{searchText.trim() ? t("palette.searchAllFor", { query: searchText.trim() }) : t("palette.searchAll")}</span>
+                  </CommandItem>
+                </CommandGroup>
               </>
             )}
           </CommandList>
