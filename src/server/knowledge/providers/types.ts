@@ -17,7 +17,10 @@ export type Evidence = {
   sourceTitle: string;
   locator: EvidenceLocator;
   text: string;
+  /** Điểm xếp hạng (provider `local`: RRF — chỉ so sánh trong cùng một lần truy vấn). */
   score: number;
+  /** Độ tương đồng cosine (0–1) của vector tốt nhất nếu chunk nằm trong top vector; dùng làm ngưỡng "thiếu bằng chứng". */
+  similarity?: number;
 };
 
 export type RetrieveQuery = {
