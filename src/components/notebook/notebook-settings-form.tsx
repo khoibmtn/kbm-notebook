@@ -208,6 +208,7 @@ export function NotebookSettingsForm() {
               placeholder={t("notebook.systemInstruction.placeholder")}
             />
             <p className="text-xs text-muted-foreground">{t("notebook.systemInstruction.hint")}</p>
+            <p className="text-xs text-muted-foreground" data-testid="system-instruction-combine-hint">{t("chat.settings.combineHint")}</p>
           </div>
           <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
             <div className="space-y-0.5">

@@ -16,6 +16,7 @@ import {
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
+import type { SourceUsed } from "@/lib/chat";
 import type { Evidence } from "@/server/knowledge/providers/types";
 
 /* -------------------------------------------------------------------------- */
@@ -446,7 +447,7 @@ export const messages = pgTable(
     role: messageRoleEnum("role").notNull(),
     content: text("content").notNull(),
     citations: jsonb("citations").$type<Evidence[]>(),
-    sourcesUsed: jsonb("sources_used").$type<string[]>(),
+    sourcesUsed: jsonb("sources_used").$type<SourceUsed[]>(),
     insufficientEvidence: boolean("insufficient_evidence").default(false).notNull(),
     scope: jsonb("scope").$type<MessageScope>(),
     model: text("model"),

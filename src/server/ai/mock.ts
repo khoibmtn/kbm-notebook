@@ -72,6 +72,18 @@ export function hashEmbed(text: string, dim = EMBEDDING_DIM): number[] {
   return v.map((x) => x / n);
 }
 
+/**
+ * Trả lời giả lập có căn cứ cho tin nhắn chat dạng "NGUỒN … CÂU HỎI …" (xem `buildUserTurn` ở chat/ask.ts):
+ * trích câu đầu của nguồn [1] kèm trích dẫn. Trả null nếu không phải tin nhắn chat có nguồn.
+ */
+export function mockGroundedAnswer(userText: string): string | null {
+  const m = /^NGUỒN[^\n]*\n\[1\] Nguồn: [^\n]*\n([\s\S]*?)(?:\n\n\[2\] Nguồn:|\n\nCÂU HỎI:)/.exec(userText);
+  if (!m) return null;
+  const q = /CÂU HỎI:\n([\s\S]*)$/.exec(userText)?.[1]?.replace(/\s+/g, " ").trim().slice(0, 120) ?? "";
+  const excerpt = m[1].replace(/\s+/g, " ").trim().slice(0, 160);
+  return `[mock] Về "${q}": theo nguồn đã chọn, ${excerpt} [1]`;
+}
+
 export class MockAiProvider implements AiProvider {
   readonly id = "mock" as const;
 
@@ -89,8 +101,9 @@ export class MockAiProvider implements AiProvider {
       const json = req.__mockJson !== undefined ? req.__mockJson : minimalValueFor(req.jsonSchema as JsonSchemaLike);
       return { text: JSON.stringify(json), json, usage };
     }
+    const grounded = mockGroundedAnswer(this.lastUser(req));
     return {
-      text: `[mock] Đây là câu trả lời giả lập cho: ${q}`,
+      text: grounded ?? `[mock] Đây là câu trả lời giả lập cho: ${q}`,
       usage,
       webSources: req.tools?.googleSearch ? [] : undefined,
     };
