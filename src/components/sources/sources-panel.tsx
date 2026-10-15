@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AddSourceDialog } from "@/components/sources/add-source-dialog";
 import { SourceCard, type SourceCardActions } from "@/components/sources/source-card";
 import { SourceViewerSheet } from "@/components/sources/source-viewer";
+import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
 import { useSources } from "@/components/sources/use-sources";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +25,10 @@ import { cn } from "@/lib/utils";
 type Props = {
   /** Giới hạn dung lượng tệp (MB) do server cấu hình (MAX_UPLOAD_MB). */
   maxUploadMb: number;
+  /** Mở sẵn Source viewer cho nguồn này (liên kết sâu `?source=<id>`). */
+  initialViewSourceId?: string | null;
+  /** Mở sẵn hộp "Thêm nguồn" (từ bảng lệnh ⌘K). */
+  initialAddOpen?: boolean;
   className?: string;
 };
 
@@ -31,16 +36,17 @@ type Props = {
  * Bảng Nguồn: thêm nguồn, danh sách thẻ nguồn với trạng thái realtime, chọn nguồn làm phạm vi cho Chat/Studio.
  * Dùng trong cột trái của `NotebookWorkspace` và ở trang `/n/[id]/sources`.
  */
-export function SourcesPanel({ maxUploadMb, className }: Props) {
+export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialAddOpen = false, className }: Props) {
   const t = useT();
   const { notebook, role, user } = useNotebook();
   const canEdit = hasRole(role, "editor");
   const { sources, error, reload, rename, setVisibility, remove, reprocess } = useSources(notebook.id, user.id);
+  const shareToChat = useShareToChat();
   const selection = useSourceSelection(notebook.id);
   const { prune, add, setAll, toggle, isSelected } = selection;
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [viewing, setViewing] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(initialAddOpen && canEdit);
+  const [viewing, setViewing] = useState<string | null>(initialViewSourceId);
   const [renaming, setRenaming] = useState<SourceDto | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleting, setDeleting] = useState<SourceDto | null>(null);
@@ -87,6 +93,7 @@ export function SourcesPanel({ maxUploadMb, className }: Props) {
     onToggleVisibility: (s) => void run(() => setVisibility(s.id, s.visibility === "private" ? "shared" : "private")),
     onReprocess: (s) => void run(() => reprocess(s.id)),
     onDelete: (s) => setDeleting(s),
+    onShareToChat: shareToChat ? (s) => shareToChat({ type: "source", id: s.id, title: s.title }) : undefined,
   };
 
   return (

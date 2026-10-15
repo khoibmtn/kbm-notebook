@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { NotebookProvider } from "@/components/notebook/notebook-context";
 import { NotebookShell } from "@/components/notebook/notebook-shell";
+import { ShareToChatProvider } from "@/components/team-chat/share-to-chat-provider";
 import { ApiError } from "@/server/api/errors";
 import { requireNotebookRole } from "@/server/auth/permissions";
 import { requirePageSession } from "@/server/auth/page-session";
@@ -43,7 +44,9 @@ export default async function NotebookLayout({
         },
       }}
     >
-      <NotebookShell>{children}</NotebookShell>
+      <ShareToChatProvider>
+        <NotebookShell>{children}</NotebookShell>
+      </ShareToChatProvider>
     </NotebookProvider>
   );
 }

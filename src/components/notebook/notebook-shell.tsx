@@ -20,6 +20,7 @@ import { useStoredFlag } from "@/lib/use-stored-flag";
 import { MembersDialog } from "@/components/notebook/members-panel";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { NotebookTitle } from "@/components/notebook/notebook-title";
+import { CommandPaletteTrigger } from "@/components/shared/command-palette";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { UserMenu } from "@/components/shared/user-menu";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ export function NotebookShell({ children }: { children: ReactNode }) {
         <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
           <Users /> <span className="hidden sm:inline">{t("notebook.share")}</span>
         </Button>
+        <CommandPaletteTrigger />
         <NotificationBell />
         <UserMenu user={user} />
       </header>

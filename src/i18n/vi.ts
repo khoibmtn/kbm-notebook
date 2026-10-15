@@ -215,7 +215,6 @@ export const vi = {
   "workspace.expand": "Mở rộng cột {name}",
 
   "module.comingSoon": "Đang phát triển",
-  "module.comingSoon.description": "Mô-đun này đang được phát triển và sẽ sớm có mặt.",
 
   "dashboard.title": "Sổ tay của tôi",
   "dashboard.heading": "Sổ tay của tôi",
@@ -293,17 +292,6 @@ export const vi = {
   "invite.invalid.description": "Liên kết không tồn tại hoặc đã bị thu hồi.",
   "invite.wrongAccount": "Bạn đang đăng nhập bằng {email}, không phải email được mời.",
   "invite.switchAccount": "Đăng xuất và đổi tài khoản",
-
-  "sources.empty.title": "Nguồn tri thức",
-  "sources.empty.description": "Tải tệp, dán URL hoặc văn bản làm nguồn cho sổ tay. Mô-đun này đang được phát triển.",
-  "chat.empty.title": "Trò chuyện với nguồn của bạn",
-  "chat.empty.description": "Hỏi đáp có trích dẫn trên các nguồn trong sổ tay. Mô-đun này đang được phát triển.",
-  "notes.empty.title": "Ghi chú",
-  "notes.empty.description": "Lưu câu trả lời hay và soạn ghi chú ngay trong sổ tay. Mô-đun này đang được phát triển.",
-  "studio.empty.title": "Studio",
-  "studio.empty.description": "Tạo bài thuyết trình, báo cáo, sơ đồ tư duy, bài kiểm tra từ nguồn. Mô-đun này đang được phát triển.",
-  "team.empty.title": "Chat nhóm",
-  "team.empty.description": "Trò chuyện thời gian thực với các thành viên của sổ tay. Mô-đun này đang được phát triển.",
 
   "settings.title": "Cài đặt",
   "settings.tab.profile": "Hồ sơ",
@@ -445,6 +433,22 @@ export const vi = {
   "sources.viewer.highlighted": "Đoạn được trích dẫn",
   "sources.viewer.back": "Quay lại danh sách nguồn",
   "sources.viewer.noSummary": "Chưa có tóm tắt.",
+  "palette.open": "Tìm kiếm",
+  "palette.title": "Tìm kiếm nhanh",
+  "palette.description": "Tìm sổ tay, nguồn, ghi chú, artifact, kênh nhóm hoặc chạy một hành động nhanh.",
+  "palette.placeholder": "Tìm sổ tay, nguồn, ghi chú, artifact, kênh…",
+  "palette.empty": "Không có kết quả phù hợp",
+  "palette.current": "Đang mở",
+  "palette.goto": "Đi tới",
+  "palette.group.actions": "Hành động",
+  "palette.group.notebooks": "Sổ tay",
+  "palette.group.sources": "Nguồn",
+  "palette.group.notes": "Ghi chú",
+  "palette.group.artifacts": "Artifact",
+  "palette.group.channels": "Kênh nhóm",
+  "palette.group.goto": "Đi tới",
+  "palette.action.createNotebook": "Tạo sổ tay",
+  "palette.action.addSource": "Thêm nguồn",
 } as const;
 
 export type MessageKey = keyof typeof vi;

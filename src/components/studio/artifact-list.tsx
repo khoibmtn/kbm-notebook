@@ -1,5 +1,5 @@
 "use client";
-import { AlertCircle, Copy, Download, ExternalLink, History, Loader2, MoreHorizontal, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { AlertCircle, Copy, Download, ExternalLink, History, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, RefreshCw, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, errorMessage } from "@/lib/api-client";
@@ -89,6 +90,7 @@ function ArtifactRow({
   const t = useT();
   const Icon = TYPE_ICONS[a.type];
   const { exportAs } = useArtifactExport();
+  const shareToChat = useShareToChat();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(a.title);
   const [deleting, setDeleting] = useState(false);
@@ -147,6 +149,11 @@ function ArtifactRow({
           <DropdownMenuItem onSelect={() => void openShare()}>
             <Share2 /> {t("studio.menu.share")}
           </DropdownMenuItem>
+          {shareToChat && ready && a.visibility !== "private" && (
+            <DropdownMenuItem onSelect={() => shareToChat({ type: "artifact", id: a.id, title: a.title })} data-testid="artifact-share-to-chat">
+              <MessageSquarePlus /> {t("team.share.title")}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={!ready}>
               <Download /> {t("studio.menu.export")}

@@ -1,5 +1,5 @@
 "use client";
-import { AlertCircle, Eye, Loader2, Lock, MoreHorizontal, Pencil, RefreshCw, Trash2, Unlock } from "lucide-react";
+import { AlertCircle, Eye, Loader2, Lock, MessageSquarePlus, MoreHorizontal, Pencil, RefreshCw, Trash2, Unlock } from "lucide-react";
 import { SourceTypeIcon } from "@/components/sources/source-icon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ export type SourceCardActions = {
   onToggleVisibility: (s: SourceDto) => void;
   onReprocess: (s: SourceDto) => void;
   onDelete: (s: SourceDto) => void;
+  /** Có → menu có mục "Chia sẻ vào chat" (chỉ nguồn đã sẵn sàng và không riêng tư). */
+  onShareToChat?: (s: SourceDto) => void;
 };
 
 function compactNumber(n: number): string {
@@ -136,6 +138,11 @@ export function SourceCard({ source, selected, onSelectedChange, actions, canEdi
           <DropdownMenuItem onSelect={() => actions.onView(source)}>
             <Eye /> {t("sources.menu.view")}
           </DropdownMenuItem>
+          {actions.onShareToChat && source.status === "ready" && source.visibility !== "private" && (
+            <DropdownMenuItem onSelect={() => actions.onShareToChat?.(source)} data-testid="source-share-to-chat">
+              <MessageSquarePlus /> {t("team.share.title")}
+            </DropdownMenuItem>
+          )}
           {canManage && (
             <>
               <DropdownMenuItem onSelect={() => actions.onRename(source)}>

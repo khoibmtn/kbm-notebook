@@ -33,6 +33,7 @@ import { noteFileName, type NoteDto, type NoteListItem, type NoteOrigin } from "
 import { hasRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { NoteEditor } from "./note-editor";
+import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
 
 const ORIGIN_LABEL: Record<NoteOrigin, MessageKey> = {
   manual: "notes.origin.manual",
@@ -77,7 +78,10 @@ type Props = {
 };
 
 /** Mô-đun Ghi chú: danh sách + tìm kiếm, trình soạn Tiptap (Markdown), thêm vào Nguồn, xuất Markdown. */
-export function NotesPanel({ initialNoteId = null, onShareToChat, compact = false, className }: Props) {
+export function NotesPanel({ initialNoteId = null, onShareToChat: onShareProp, compact = false, className }: Props) {
+  const shareToChat = useShareToChat();
+  // Mặc định dùng hộp "Chia sẻ vào chat" của sổ tay; chỉ ghi chú dùng chung (không riêng tư) mới chia sẻ được.
+  const onShareToChat = onShareProp ?? (shareToChat ? (n: NoteDto) => shareToChat({ type: "note", id: n.id, title: n.title }) : undefined);
   const t = useT();
   const { locale } = useLocale();
   const { notebook, role } = useNotebook();
@@ -324,8 +328,8 @@ export function NotesPanel({ initialNoteId = null, onShareToChat, compact = fals
                           <BookMarked /> {note.isSource ? t("notes.action.alreadySource") : t("notes.action.toSource")}
                         </DropdownMenuItem>
                       )}
-                      {onShareToChat && (
-                        <DropdownMenuItem onSelect={() => onShareToChat(note)}>
+                      {onShareToChat && note.visibility === "shared" && (
+                        <DropdownMenuItem onSelect={() => onShareToChat(note)} data-testid="note-share-to-chat">
                           <Share2 /> {t("notes.action.shareToChat")}
                         </DropdownMenuItem>
                       )}

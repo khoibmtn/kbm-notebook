@@ -1,7 +1,9 @@
 "use client";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useSyncExternalStore, type ReactNode } from "react";
+import { useNotebook } from "@/components/notebook/notebook-context";
 import { useStoredFlag } from "@/lib/use-stored-flag";
+import { useTeamUnread } from "@/lib/use-team-unread";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n-client";
@@ -27,6 +29,8 @@ type Props = {
   main: ReactNode;
   /** Cột phải: Studio (360px, thu gọn 56px). */
   studio: ReactNode;
+  /** Chat nhóm: chỉ hiện thành tab "Nhóm" ở thanh dưới < 1024px (trên desktop dùng trang `/n/[id]/team`). */
+  team?: ReactNode;
 };
 
 function Column({
@@ -77,10 +81,12 @@ function Column({
 
 /**
  * Bố cục 3 cột kiểu NotebookLM: Sources (320) · Main (linh hoạt) · Studio (360).
- * < 1024px: gộp thành 3 tab (Sources · Chat · Studio). Trạng thái thu gọn lưu ở localStorage.
+ * < 1024px: gộp thành tab dưới cùng (Sources · Chat · Studio · Nhóm, có huy hiệu tin chưa đọc). Trạng thái thu gọn lưu ở localStorage.
  */
-export function NotebookWorkspace({ sources, main, studio }: Props) {
+export function NotebookWorkspace({ sources, main, studio, team }: Props) {
   const t = useT();
+  const { notebook, user } = useNotebook();
+  const teamUnread = useTeamUnread(notebook.id, user.id);
   const isDesktop = useIsDesktop();
   const [sourcesCollapsed, toggleSources] = useStoredFlag("kbm:workspace:sources");
   const [studioCollapsed, toggleStudio] = useStoredFlag("kbm:workspace:studio");
@@ -97,10 +103,29 @@ export function NotebookWorkspace({ sources, main, studio }: Props) {
         <TabsContent value="studio" className="min-h-0 flex-1 overflow-y-auto">
           {studio}
         </TabsContent>
+        {team && (
+          <TabsContent value="team" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {team}
+          </TabsContent>
+        )}
         <TabsList className="h-12 w-full shrink-0 rounded-none border-t bg-background">
           <TabsTrigger value="sources">{t("nav.sources")}</TabsTrigger>
           <TabsTrigger value="chat">{t("nav.chat")}</TabsTrigger>
           <TabsTrigger value="studio">{t("nav.studio")}</TabsTrigger>
+          {team && (
+            <TabsTrigger value="team" data-testid="mobile-tab-team">
+              {t("nav.team")}
+              {teamUnread > 0 && (
+                <span
+                  data-testid="mobile-team-unread-badge"
+                  className="ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                  aria-label={t("team.unreadAria", { count: teamUnread })}
+                >
+                  {teamUnread > 99 ? "99+" : teamUnread}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
     );

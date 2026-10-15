@@ -1,10 +1,11 @@
 "use client";
-import { AlertCircle, ArrowLeft, Check, Copy, Download, History, Loader2, MoreHorizontal, RefreshCw, RotateCcw, Save, Share2, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Copy, Download, History, Loader2, MessageSquarePlus, MoreHorizontal, RefreshCw, RotateCcw, Save, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useNotebook } from "@/components/notebook/notebook-context";
+import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -57,6 +58,7 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
   const { notebook, role } = useNotebook();
   const { connected } = useRealtime();
   const { exportAs } = useArtifactExport();
+  const shareToChat = useShareToChat();
 
   const [artifact, setArtifact] = useState<ArtifactDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -429,6 +431,12 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
           <Button size="sm" variant="outline" onClick={() => setShareOpen(true)} data-testid="artifact-share">
             <Share2 /> <span className="hidden sm:inline">{t("studio.menu.share")}</span>
           </Button>
+
+          {shareToChat && artifact.status === "ready" && artifact.visibility !== "private" && (
+            <Button size="sm" variant="outline" onClick={() => shareToChat({ type: "artifact", id: artifact.id, title: artifact.title })} data-testid="artifact-share-to-chat">
+              <MessageSquarePlus /> <span className="hidden sm:inline">{t("team.share.title")}</span>
+            </Button>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
