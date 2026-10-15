@@ -5,7 +5,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 /**
  * Chromium dùng cho xuất PDF/PNG/SVG mind map. Thứ tự tìm tệp thực thi:
- * `PW_CHROMIUM_PATH` → `<PLAYWRIGHT_BROWSERS_PATH hoặc /opt/pw-browsers>/chromium-*​/chrome-linux/chrome`
+ * `PW_CHROMIUM_PATH` → `<PLAYWRIGHT_BROWSERS_PATH hoặc /opt/pw-browsers>/chromium-<số phiên bản>/chrome-linux/chrome`
  * (và headless_shell) → mặc định của Playwright. Cùng cấu hình với `playwright.config.ts` của dự án.
  */
 export function resolveChromiumPath(): string | undefined {

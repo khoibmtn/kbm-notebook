@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Bộ dựng JSON artifact CHO MOCK (dev/e2e, `AI_PROVIDER=mock`): lấy các câu có thật trong phần "NGUỒN" của prompt
  * rồi đóng gói theo schema từng loại, mọi tiêu đề gắn "[mock]". Không phải đầu ra AI thật — chỉ để chạy được
- * toàn bộ luồng (job → phiên bản → editor → xuất) khi chưa có khoá Gemini.
+ * toàn bộ luồng (job → phiên bản → editor → xuất) khi chưa có khoá AI.
  */
 
 type SourceBlock = { n: number; title: string; sentences: string[] };
