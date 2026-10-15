@@ -226,8 +226,6 @@ export const vi = {
   "dashboard.create": "Tạo sổ tay",
   "dashboard.create.description": "Mỗi sổ tay là một không gian riêng cho nguồn tài liệu, hội thoại AI và nhóm của bạn.",
   "dashboard.create.submit": "Tạo",
-  "dashboard.empty.title": "Bạn chưa có sổ tay nào",
-  "dashboard.empty.description": "Tạo sổ tay đầu tiên để bắt đầu gom tài liệu và học cùng AI.",
   "dashboard.noMatch": "Không có sổ tay nào khớp với tìm kiếm",
 
   "notebook.title": "Tiêu đề",

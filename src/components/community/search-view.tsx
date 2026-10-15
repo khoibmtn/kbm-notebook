@@ -72,10 +72,14 @@ export function SearchView({ initialQuery, notebookId }: { initialQuery: string;
   const [input, setInput] = useState(initialQuery);
   const [query, setQuery] = useState(initialQuery.trim());
   const [filter, setFilter] = useState<SearchType | "all">("all");
-  const [data, setData] = useState<SearchResponseDto | null>(null);
-  const [loading, setLoading] = useState(Boolean(initialQuery.trim()));
-  const [error, setError] = useState<string | null>(null);
+  // Kết quả gắn với từ khoá + phạm vi đã tìm → dữ liệu của lần tìm trước không hiện lẫn.
+  const [result, setResult] = useState<{ key: string; data: SearchResponseDto | null; error: string | null } | null>(null);
   const [active, setActive] = useState(0);
+  const searchKey = query ? `${query}|${notebookId ?? ""}` : "";
+  const current = result && result.key === searchKey ? result : null;
+  const data = current?.data ?? null;
+  const error = current?.error ?? null;
+  const loading = Boolean(query) && !current;
 
   const commit = useCallback(
     (value: string) => {
@@ -99,31 +103,21 @@ export function SearchView({ initialQuery, notebookId }: { initialQuery: string;
   }, [input, query, commit]);
 
   useEffect(() => {
-    if (!query) {
-      setData(null);
-      setLoading(false);
-      return;
-    }
+    if (!searchKey) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     const qs = new URLSearchParams({ q: query, limit: "10" });
     if (notebookId) qs.set("notebookId", notebookId);
     api<SearchResponseDto>(`/api/search?${qs.toString()}`)
       .then((res) => {
-        if (cancelled) return;
-        setData(res);
-        setLoading(false);
+        if (!cancelled) setResult({ key: searchKey, data: res, error: null });
       })
       .catch((e) => {
-        if (cancelled) return;
-        setError(errorMessage(e, t("search.error")));
-        setLoading(false);
+        if (!cancelled) setResult({ key: searchKey, data: null, error: errorMessage(e, t("search.error")) });
       });
     return () => {
       cancelled = true;
     };
-  }, [query, notebookId, t]);
+  }, [searchKey, query, notebookId, t]);
 
   const groups = useMemo(() => {
     if (!data) return [];
@@ -170,7 +164,7 @@ export function SearchView({ initialQuery, notebookId }: { initialQuery: string;
     }
   }
 
-  let runningIndex = -1;
+  const startIndex = groups.reduce<number[]>((acc, g, i) => [...acc, i === 0 ? 0 : acc[i - 1] + groups[i - 1].items.length], []);
   return (
     <div className="space-y-5" onKeyDown={onKeyDown}>
       <h1 className="text-xl font-semibold">{t("search.title")}</h1>
@@ -239,7 +233,7 @@ export function SearchView({ initialQuery, notebookId }: { initialQuery: string;
         <EmptyState icon={Search} title={t("search.empty", { query: data.query })} className="py-16" />
       ) : (
         <div className={cn("space-y-6", loading && "opacity-60")} aria-busy={loading} aria-label={t("search.results.aria")} data-testid="search-results">
-          {groups.map((g) => {
+          {groups.map((g, gi) => {
             const GroupIcon = GROUP_ICONS[g.type];
             return (
               <section key={g.type} aria-labelledby={`sg-${g.type}`} data-testid={`search-group-${g.type}`}>
@@ -248,9 +242,8 @@ export function SearchView({ initialQuery, notebookId }: { initialQuery: string;
                   <span className="font-normal">({g.items.length})</span>
                 </h2>
                 <ul className="divide-y rounded-xl border bg-card">
-                  {g.items.map((r) => {
-                    runningIndex += 1;
-                    const idx = runningIndex;
+                  {g.items.map((r, ri) => {
+                    const idx = startIndex[gi] + ri;
                     const isActive = idx === active;
                     return (
                       <li key={`${r.type}:${r.id}`}>

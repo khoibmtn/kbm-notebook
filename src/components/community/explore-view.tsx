@@ -2,7 +2,7 @@
 import { Heart, Loader2, Lock, MessageSquare, Plus, Search, UsersRound, BookOpen, Globe } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CreateGroupDialog } from "@/components/community/create-group-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -27,35 +27,64 @@ const TABS: ExploreTab[] = ["artifacts", "notebooks", "groups"];
 
 type ListState<T> = { items: T[]; page: number; hasMore: boolean; loading: boolean; error: boolean };
 
-/** Danh sách phân trang theo bộ lọc: đổi bộ lọc → tải lại từ trang 1; "Tải thêm" nối trang kế. */
+type Loaded<T> = { key: string; items: T[]; page: number; hasMore: boolean; error: boolean };
+
+/**
+ * Danh sách phân trang theo bộ lọc: đổi bộ lọc → tải lại từ trang 1; "Tải thêm" nối trang kế.
+ * Kết quả gắn với `key` (endpoint + bộ lọc) nên dữ liệu của bộ lọc cũ không bao giờ hiện lẫn; `loading` suy ra từ key.
+ */
 function usePagedList<T>(endpoint: string, params: Record<string, string>) {
-  const [state, setState] = useState<ListState<T>>({ items: [], page: 0, hasMore: false, loading: true, error: false });
-  const key = endpoint + JSON.stringify(params);
-  const seq = useRef(0);
+  const paramsKey = JSON.stringify(params);
+  const key = endpoint ? endpoint + paramsKey : "";
+  const [loaded, setLoaded] = useState<Loaded<T> | null>(null);
+  const [moreBusy, setMoreBusy] = useState(false);
 
   const fetchPage = useCallback(
-    async (page: number, append: boolean) => {
-      if (!endpoint) return;
-      const id = ++seq.current;
-      setState((s) => ({ ...s, loading: true, error: false, ...(append ? {} : { items: [], page: 0 }) }));
-      const qs = new URLSearchParams({ ...Object.fromEntries(Object.entries(params).filter(([, v]) => v)), page: String(page) });
-      try {
-        const res = await api<Paged<T>>(`${endpoint}?${qs.toString()}`);
-        if (id !== seq.current) return;
-        setState((s) => ({ items: append ? [...s.items, ...res.items] : res.items, page: res.page, hasMore: res.hasMore, loading: false, error: false }));
-      } catch {
-        if (id === seq.current) setState((s) => ({ ...s, loading: false, error: true }));
-      }
+    async (page: number): Promise<Paged<T>> => {
+      const parsed = JSON.parse(paramsKey) as Record<string, string>;
+      const qs = new URLSearchParams({ ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v)), page: String(page) });
+      return api<Paged<T>>(`${endpoint}?${qs.toString()}`);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` đại diện cho endpoint + params
-    [key],
+    [endpoint, paramsKey],
   );
 
   useEffect(() => {
-    void fetchPage(1, false);
-  }, [fetchPage]);
+    if (!key) return;
+    let cancelled = false;
+    fetchPage(1)
+      .then((res) => {
+        if (!cancelled) setLoaded({ key, items: res.items, page: res.page, hasMore: res.hasMore, error: false });
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded({ key, items: [], page: 1, hasMore: false, error: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, fetchPage]);
 
-  return { ...state, loadMore: () => fetchPage(state.page + 1, true), reload: () => fetchPage(1, false) };
+  const current = loaded && loaded.key === key ? loaded : null;
+  const loadMore = useCallback(async () => {
+    if (!current) return;
+    setMoreBusy(true);
+    try {
+      const res = await fetchPage(current.page + 1);
+      setLoaded((l) => (l && l.key === key ? { ...l, items: [...l.items, ...res.items], page: res.page, hasMore: res.hasMore, error: false } : l));
+    } catch {
+      setLoaded((l) => (l && l.key === key ? { ...l, error: true } : l));
+    } finally {
+      setMoreBusy(false);
+    }
+  }, [current, fetchPage, key]);
+
+  const state: ListState<T> = {
+    items: current?.items ?? [],
+    page: current?.page ?? 0,
+    hasMore: current?.hasMore ?? false,
+    loading: !current || moreBusy,
+    error: current?.error ?? false,
+  };
+  return { ...state, loadMore };
 }
 
 function LoadMore({ list, t }: { list: { hasMore: boolean; loading: boolean; error: boolean; loadMore: () => void }; t: ReturnType<typeof useT> }) {

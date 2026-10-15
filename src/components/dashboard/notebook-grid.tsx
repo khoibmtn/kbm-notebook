@@ -3,6 +3,7 @@ import { Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CreateNotebookDialog } from "@/components/dashboard/create-notebook-dialog";
+import { OnboardingGuide } from "@/components/dashboard/onboarding-guide";
 import { RoleBadge, type RoleName } from "@/components/dashboard/role-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -12,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
 import { DEFAULT_COVER_COLOR } from "@/lib/notebook-colors";
-import { BookOpen } from "lucide-react";
 
 export type NotebookCardData = {
   id: string;
@@ -60,17 +60,7 @@ export function NotebookGrid({ initial }: { initial: NotebookCardData[] }) {
       </div>
 
       {initial.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title={t("dashboard.empty.title")}
-          description={t("dashboard.empty.description")}
-          action={
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus /> {t("dashboard.create")}
-            </Button>
-          }
-          className="rounded-xl border border-dashed py-16"
-        />
+        <OnboardingGuide />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Search} title={t("dashboard.noMatch")} className="py-16" />
       ) : (
