@@ -169,3 +169,27 @@ def test_unknown_route_and_method_use_error_envelope(client: TestClient) -> None
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
     r = client.put("/notebooks")
     assert r.status_code == 405 and r.json()["error"]["code"] == "method_not_allowed"
+
+
+def test_source_fulltext(client: TestClient, fake: FakeClient) -> None:
+    fake.fulltexts["s1"] = "Tim có bốn buồng.\n\nHai tâm nhĩ và hai tâm thất."
+    r = client.get("/notebooks/nb1/sources/s1/fulltext")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"source_id", "title", "kind", "url", "text", "char_count"}
+    assert body["source_id"] == "s1"
+    assert body["text"] == fake.fulltexts["s1"]
+    assert body["char_count"] == len(fake.fulltexts["s1"])
+
+
+def test_source_fulltext_errors(client: TestClient, fake: FakeClient) -> None:
+    missing_source = client.get("/notebooks/nb1/sources/nope/fulltext")
+    assert missing_source.status_code == 404
+    assert missing_source.json()["error"]["code"] == "source_not_found"
+    missing_nb = client.get("/notebooks/zzz/sources/s1/fulltext")
+    assert missing_nb.status_code == 404
+    assert missing_nb.json()["error"]["code"] == "notebook_not_found"
+
+
+def test_source_fulltext_requires_token(anon: TestClient) -> None:
+    assert anon.get("/notebooks/nb1/sources/s1/fulltext").status_code == 401

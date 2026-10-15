@@ -205,6 +205,7 @@ Schema OpenAPI đầy đủ (cũng cần token): `GET /openapi.json`.
 | `GET /notebooks/{id}` | | notebook + `sources: [{id, title, kind, status, url}]` |
 | `GET /notebooks/{id}/sources` | | `[{id, title, kind, status, url}]` (`status`: `processing`/`ready`/`error`/`preparing`) |
 | `POST /notebooks/{id}/sources` | `{type:"text", title, text}` **hoặc** `{type:"url", url, title?}` **hoặc** `multipart/form-data` (`file`, `title?`) | `201` source vừa tạo (thường `status: processing`, poll bằng `GET .../sources`) |
+| `GET /notebooks/{id}/sources/{sourceId}/fulltext` | | `{source_id, title, kind, url, text, char_count}`: văn bản đọc được của nguồn như NotebookLM đã lập chỉ mục (dùng để nhập nguồn sang KBM Notebook); `404 source_not_found` |
 | `DELETE /notebooks/{id}/sources/{sourceId}` | | `204` (hoặc `404 source_not_found`) |
 | `POST /notebooks/{id}/ask` | `{question, source_ids?: string[], conversation_id?}` | `{answer, conversation_id, references: [{source_id, source_title?, citation_number, cited_text, start_char, end_char, score?}]}` |
 | `GET /notebooks/{id}/notes` | | `[{id, title, content, created_at}]` |
@@ -291,7 +292,7 @@ Khác biệt cần biết:
 ## Phát triển & kiểm thử
 
 ```bash
-.venv/bin/pytest -q                       # 90+ test, không cần đăng nhập Google
+.venv/bin/pytest -q                       # 100 test, không cần đăng nhập Google
 .venv/bin/python -c "import app.main"     # kiểm tra import với thư viện thật
 ```
 

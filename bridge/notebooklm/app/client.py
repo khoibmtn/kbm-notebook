@@ -32,6 +32,7 @@ from .errors import (
 from .models import (
     ArtifactOut,
     AskOut,
+    FulltextOut,
     GenerationOut,
     NoteOut,
     NotebookOut,
@@ -65,6 +66,7 @@ class BridgeClient(Protocol):
         self, notebook_id: str, path: Path, title: str | None = None
     ) -> SourceOut: ...
     async def delete_source(self, notebook_id: str, source_id: str) -> None: ...
+    async def get_source_fulltext(self, notebook_id: str, source_id: str) -> FulltextOut: ...
 
     async def ask(
         self,
@@ -222,6 +224,23 @@ class NotebookLMBridgeClient:
             raise NotFound(f"Source {source_id} not found in notebook.", code="source_not_found")
         await self._run(lambda c: c.sources.delete(notebook_id, source_id))
 
+    async def get_source_fulltext(self, notebook_id: str, source_id: str) -> FulltextOut:
+        # The library does not 404 on unknown ids, so resolve against the list first.
+        sources = await self._run(lambda c: c.sources.list(notebook_id))
+        if all(s.id != source_id for s in sources):
+            raise NotFound(f"Source {source_id} not found in notebook.", code="source_not_found")
+        ft = await self._run(lambda c: c.sources.get_fulltext(notebook_id, source_id))
+        # ``rendered_content`` keeps paragraphs intact; ``content`` is the legacy run-per-line form.
+        text = ft.rendered_content or ft.content or ""
+        return FulltextOut(
+            source_id=ft.source_id,
+            title=ft.title,
+            kind=_source_kind(ft),
+            url=ft.url,
+            text=text,
+            char_count=len(text),
+        )
+
     # -- chat --------------------------------------------------------------------
     async def ask(
         self,
@@ -340,6 +359,11 @@ def _source(src: Any) -> SourceOut:
         status=source_status_to_str(src.status),
         url=src.url,
     )
+
+
+def _source_kind(ft: Any) -> str:
+    kind = getattr(ft, "kind", None)
+    return str(getattr(kind, "value", None) or "unknown")
 
 
 def _note(note: Any) -> NoteOut:
