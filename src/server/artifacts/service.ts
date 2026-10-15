@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
+import { verifiedEmailCondition, verifiedEmailRaw } from "@/server/auth/email-verified";
 import { canViewArtifact, getNotebookRole, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
 import { randomToken } from "@/server/crypto";
@@ -14,6 +15,7 @@ import {
   type Artifact,
   type ArtifactVersionRow,
 } from "@/server/db/schema";
+import { emailVerificationRequired } from "@/server/env";
 import { enqueue } from "@/server/jobs/queue";
 import {
   contentSchemaFor,
@@ -86,7 +88,7 @@ async function shareRoleOf(userId: string, artifactId: string): Promise<"view" |
         eq(artifactShares.artifactId, artifactId),
         or(
           eq(artifactShares.userId, userId),
-          and(isNull(artifactShares.userId), sql`lower(${artifactShares.email}) = lower(${users.email})`),
+          and(isNull(artifactShares.userId), sql`lower(${artifactShares.email}) = lower(${users.email})`, verifiedEmailCondition()),
         ),
       ),
     );
@@ -228,7 +230,7 @@ export async function listArtifacts(
   const visible = or(
     eq(artifacts.createdBy, viewer.userId),
     inArray(artifacts.visibility, ["notebook", "link", "public"]),
-    sql`exists (select 1 from ${artifactShares} s left join ${users} u on u.id = ${viewer.userId} where s.artifact_id = ${artifacts.id} and (s.user_id = ${viewer.userId} or (s.user_id is null and lower(s.email) = lower(u.email))))`,
+    sql`exists (select 1 from ${artifactShares} s left join ${users} u on u.id = ${viewer.userId} where s.artifact_id = ${artifacts.id} and (s.user_id = ${viewer.userId} or (s.user_id is null and lower(s.email) = lower(u.email) and ${verifiedEmailRaw("u")})))`,
   );
   const rows = await db
     .select({
@@ -594,8 +596,13 @@ export async function addShare(artifactId: string, target: { userId?: string; em
     if (!u) throw ApiError.notFound("Không tìm thấy người dùng");
     email = u.email;
   } else if (email) {
-    const [u] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`).limit(1);
-    userId = u?.id ?? null; // chưa có tài khoản → giữ email, tự khớp khi họ đăng ký
+    const [u] = await db
+      .select({ id: users.id, verified: users.emailVerified })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
+    // Chỉ gắn thẳng vào tài khoản đã xác minh email; chưa có tài khoản / chưa xác minh → giữ email, chỉ khớp sau khi xác minh (H-4)
+    userId = u && (u.verified || !emailVerificationRequired()) ? u.id : null;
   }
   const existing = await db
     .select()

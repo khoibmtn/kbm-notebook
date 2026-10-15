@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { artifactShares, notebookMembers, notebooks, users } from "@/server/db/schema";
 import type { Artifact, Role, Source } from "@/server/db/schema";
 import { hasRole } from "@/lib/roles";
+import { verifiedEmailCondition } from "./email-verified";
 
 export type { Role };
 
@@ -108,7 +109,8 @@ export async function canViewArtifact(
         eq(artifactShares.artifactId, artifact.id),
         or(
           eq(artifactShares.userId, userId),
-          and(isNull(artifactShares.userId), sql`lower(${artifactShares.email}) = lower(${users.email})`),
+          // Khớp theo email chỉ khi email đã xác minh (H-4)
+          and(isNull(artifactShares.userId), sql`lower(${artifactShares.email}) = lower(${users.email})`, verifiedEmailCondition()),
         ),
       ),
     )

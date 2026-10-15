@@ -4,7 +4,9 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/server/db";
 import * as schema from "@/server/db/schema";
-import { env, googleAuthEnabled } from "@/server/env";
+import { emailVerificationRequired, env, googleAuthEnabled } from "@/server/env";
+import { getEmailSender } from "@/server/email";
+import { t } from "@/lib/i18n";
 
 /** Scope Drive chỉ xin khi người dùng chủ động bấm "Kết nối Google Drive" (linkSocial). */
 export const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
@@ -35,6 +37,22 @@ function buildAuth() {
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: true,
+    },
+    // Xác minh email (H-4). Không chặn đăng nhập (người dùng vẫn dùng sổ tay của mình), nhưng email chưa xác minh
+    // không được dùng làm danh tính: lời mời theo email, chia sẻ artifact theo email, chấp nhận lời mời bằng liên kết.
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: false,
+      autoSignInAfterVerification: true,
+      expiresIn: 60 * 60 * 24,
+      sendVerificationEmail: async ({ user, url }) => {
+        // Dev/test (AUTH_REQUIRE_EMAIL_VERIFICATION=false): không gửi, tránh ồn log.
+        if (!emailVerificationRequired()) return;
+        const text = t("email.verify.body", { name: user.name, url });
+        void getEmailSender()
+          .send({ to: user.email, subject: t("email.verify.subject"), text })
+          .catch((err: unknown) => console.error("[email] gửi email xác minh thất bại:", err instanceof Error ? err.message : err));
+      },
     },
     socialProviders: googleAuthEnabled()
       ? {

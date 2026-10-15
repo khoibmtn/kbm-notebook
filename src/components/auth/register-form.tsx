@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { GoogleButton } from "@/components/auth/google-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { authClient } from "@/lib/auth-client";
 import { useT } from "@/lib/i18n-client";
 import { createRegisterSchema, safeNext, type RegisterInput } from "@/lib/validators/auth";
 
-export function RegisterForm({ next, googleEnabled }: { next?: string; googleEnabled: boolean }) {
+export function RegisterForm({ next, googleEnabled, verificationRequired = false }: { next?: string; googleEnabled: boolean; verificationRequired?: boolean }) {
   const t = useT();
   const router = useRouter();
   const target = safeNext(next);
@@ -28,12 +29,13 @@ export function RegisterForm({ next, googleEnabled }: { next?: string; googleEna
 
   async function onSubmit(values: RegisterInput) {
     setError(null);
-    const res = await authClient.signUp.email({ name: values.name, email: values.email, password: values.password });
+    const res = await authClient.signUp.email({ name: values.name, email: values.email, password: values.password, callbackURL: target });
     if (res.error) {
       const code = res.error.code ?? "";
       setError(code.includes("USER_ALREADY_EXISTS") ? t("auth.register.exists") : (res.error.message ?? t("common.error")));
       return;
     }
+    if (verificationRequired) toast.info(t("auth.verify.registered", { email: values.email }));
     router.replace(target);
     router.refresh();
   }

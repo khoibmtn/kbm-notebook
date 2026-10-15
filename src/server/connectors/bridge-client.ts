@@ -122,7 +122,6 @@ const nb = (id: string) => `/notebooks/${encodeURIComponent(id)}`;
 /** Rút gọn + làm sạch văn bản lấy từ máy chủ ngoài trước khi cho người dùng thấy (bỏ ký tự điều khiển/HTML, cắt độ dài). */
 export function sanitizeUpstreamText(value: string | null | undefined, max = 120): string | null {
   if (!value) return null;
-  // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển
   const clean = value.replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
   if (!clean) return null;
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;

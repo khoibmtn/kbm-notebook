@@ -1,6 +1,7 @@
 import { BookOpenText, MailX } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ResendVerificationButton } from "@/components/auth/verify-email-banner";
 import { AcceptInviteButton } from "@/components/invite/accept-invite-button";
 import { SignOutLink } from "@/components/invite/sign-out-link";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -9,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getT } from "@/i18n/server";
 import type { MessageKey } from "@/lib/i18n";
 import { getSession } from "@/server/auth/session";
+import { emailVerificationRequired } from "@/server/env";
 import { getInviteByToken, isInviteExpired } from "@/server/notebooks/service";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -84,7 +86,14 @@ async function InviteBody({ row, next }: { row: NonNullable<Awaited<ReturnType<t
             </Button>
           </div>
         ) : session.user.email.toLowerCase() === invite.email.toLowerCase() ? (
-          <AcceptInviteButton token={invite.token} />
+          emailVerificationRequired() && !session.user.emailVerified ? (
+            <div className="space-y-3" data-testid="invite-verify-first">
+              <p className="text-sm text-warning">{t("invite.verifyFirst", { email: session.user.email })}</p>
+              <ResendVerificationButton email={session.user.email} callbackURL={next} />
+            </div>
+          ) : (
+            <AcceptInviteButton token={invite.token} />
+          )
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-destructive">{t("invite.wrongAccount", { email: session.user.email })}</p>

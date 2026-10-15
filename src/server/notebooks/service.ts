@@ -17,6 +17,8 @@ import { DEFAULT_COVER_COLOR, DEFAULT_EMOJI } from "@/lib/notebook-colors";
 import type { CreateNotebookInput, UpdateNotebookInput } from "@/lib/validators/notebooks";
 import { canAssignRole, roleRank } from "@/lib/roles";
 import { emitToNotebook, removeUserFromRooms, rooms } from "@/server/chat/realtime";
+import { requireTrustedEmail } from "@/server/auth/email-verified";
+import { emailVerificationRequired } from "@/server/env";
 
 /** Báo cho các client đang mở sổ tay biết danh sách thành viên đã đổi. */
 function notifyMembersChanged(notebookId: string) {
@@ -250,12 +252,14 @@ export async function inviteMember(opts: {
     throw ApiError.forbidden("Bạn không thể gán vai trò ngang hoặc cao hơn vai trò của mình");
   }
   const [existing] = await db
-    .select({ id: users.id })
+    .select({ id: users.id, verified: users.emailVerified })
     .from(users)
     .where(sql`lower(${users.email}) = ${email.toLowerCase()}`)
     .limit(1);
 
-  if (existing) {
+  // Chỉ thêm THẲNG tài khoản có email trùng khi email đã xác minh; chưa xác minh → tạo lời mời (liên kết), chủ tài khoản
+  // phải xác minh email rồi mới chấp nhận được (H-4: tránh kẻ đăng ký trước email của người khác nhận quyền).
+  if (existing && (existing.verified || !emailVerificationRequired())) {
     const added = await addMember(notebookId, existing.id, role, actorId);
     if (!added) throw ApiError.conflict("Người dùng đã là thành viên của sổ tay", "already_member");
     await db.delete(notebookInvites).where(
@@ -419,6 +423,8 @@ export async function acceptInvite(token: string, user: { id: string; email: str
   if (invite.email.toLowerCase() !== user.email.toLowerCase()) {
     throw ApiError.forbidden("Lời mời này dành cho một địa chỉ email khác");
   }
+  // Khớp email chỉ có giá trị khi email đã xác minh (H-4)
+  await requireTrustedEmail(user.id);
   await db.transaction(async (tx) => {
     await addMember(invite.notebookId, user.id, invite.role, invite.invitedBy, tx);
     await tx.update(notebookInvites).set({ acceptedAt: new Date() }).where(eq(notebookInvites.id, invite.id));
