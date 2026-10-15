@@ -11,6 +11,6 @@ export const POST = handleRoute<P>(async (_req, { params }) => {
   const access = await loadArtifactAccess(user.id, artifactId);
   requireManage(access);
   const copy = await forkArtifact(access.artifact, user.id);
-  const detail = await toDetailDto({ artifact: copy, role: access.role, canEdit: true, canManage: true });
+  const detail = await toDetailDto({ artifact: copy, role: access.role, canEdit: true, canManage: true, internal: true });
   return Response.json({ artifact: detail }, { status: 201 });
 });

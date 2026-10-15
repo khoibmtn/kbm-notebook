@@ -1,6 +1,7 @@
 /** Từ điển chính (tiếng Việt). Khoá ở đây là nguồn sự thật cho kiểu `MessageKey`; `en.ts` phải có cùng khoá. */
 import { chatVi } from "./modules/chat.vi";
 import { connectorsVi } from "./modules/connectors.vi";
+import { securityVi } from "./modules/security.vi";
 import { slidesVi } from "./modules/slides.vi";
 import { studioVi } from "./modules/studio.vi";
 
@@ -134,6 +135,7 @@ export const vi = {
 
   ...chatVi,
   ...connectorsVi,
+  ...securityVi,
   ...slidesVi,
   ...studioVi,
   "app.name": "KBM Notebook",

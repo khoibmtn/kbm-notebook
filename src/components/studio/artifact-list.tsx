@@ -121,6 +121,11 @@ function ArtifactRow({
           </span>
           <span className="block text-xs text-muted-foreground">
             <StatusLine a={a} p={p} />
+            {a.containsPrivateSources && (
+              <span className="ml-1.5 text-warning" data-testid="artifact-private-sources">
+                · {t("studio.privateSourcesBadge")}
+              </span>
+            )}
           </span>
         </span>
       </Link>

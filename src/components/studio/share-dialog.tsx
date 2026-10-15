@@ -29,7 +29,7 @@ const DESC: Record<ArtifactVisibility, MessageKey> = {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  artifact: Pick<ArtifactDetailDto, "id" | "title" | "visibility" | "shareToken" | "canManage">;
+  artifact: Pick<ArtifactDetailDto, "id" | "title" | "visibility" | "shareToken" | "canManage"> & { containsPrivateSources?: boolean };
   /** Chỉ chủ sổ tay được chia sẻ công khai. */
   isNotebookOwner: boolean;
   /** Báo bản ghi mới sau khi đổi chế độ chia sẻ. */
@@ -137,7 +137,8 @@ export function ShareDialog({ open, onOpenChange, artifact, isNotebookOwner, onC
         <fieldset className="space-y-2" disabled={!canManage || busy}>
           <legend className="sr-only">{t("studio.share.visibility")}</legend>
           {ARTIFACT_VISIBILITIES.map((v) => {
-            const disabled = v === "public" && !isNotebookOwner;
+            const privateOnly = Boolean(artifact.containsPrivateSources) && v !== "private";
+            const disabled = (v === "public" && !isNotebookOwner) || privateOnly;
             const active = artifact.visibility === v;
             return (
               <label
@@ -152,7 +153,8 @@ export function ShareDialog({ open, onOpenChange, artifact, isNotebookOwner, onC
                 <span>
                   <span className="block font-medium">{t(LABEL[v])}</span>
                   <span className="block text-muted-foreground">{t(DESC[v])}</span>
-                  {disabled && <span className="block text-xs text-warning">{t("studio.share.publicOwnerOnly")}</span>}
+                  {disabled && !privateOnly && <span className="block text-xs text-warning">{t("studio.share.publicOwnerOnly")}</span>}
+                  {privateOnly && <span className="block text-xs text-warning">{t("studio.share.privateSourcesOnly")}</span>}
                 </span>
               </label>
             );

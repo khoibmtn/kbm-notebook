@@ -37,6 +37,7 @@ import type {
 import { t } from "@/lib/i18n";
 import { contentToMarkdown } from "./exporters/markdown";
 import { assertEngineAvailable } from "./registry";
+import { privateSourceIdsAmong } from "@/server/knowledge/sources";
 import { resolveScopeSourceIds } from "./evidence";
 
 /** Payload job `generate_artifact`. */
@@ -68,6 +69,11 @@ export type ArtifactAccess = {
   role: Role | null;
   canEdit: boolean;
   canManage: boolean;
+  /**
+   * Người xem "nội bộ": thành viên sổ tay, người tạo, hoặc được chia sẻ riêng. Khách (token/public/không liên quan)
+   * chỉ thấy bản hiện tại — không thấy cấu hình sinh (prompt, id nguồn, model) hay lịch sử phiên bản (M-1).
+   */
+  internal: boolean;
 };
 
 async function shareRoleOf(userId: string, artifactId: string): Promise<"view" | "edit" | null> {
@@ -112,6 +118,7 @@ export async function loadArtifactAccess(
     role,
     canEdit: isEditor || shareRole === "edit",
     canManage: isEditor,
+    internal: role != null || shareRole != null || (userId != null && artifact.createdBy === userId),
   };
 }
 
@@ -149,6 +156,7 @@ export function toArtifactDto(r: RowWithMeta, access: { canEdit: boolean; canMan
     currentVersionId: a.currentVersionId,
     currentVersionNo: r.versionNo,
     forkedFromId: a.forkedFromId,
+    containsPrivateSources: a.containsPrivateSources,
     canEdit: access.canEdit,
     canManage: access.canManage,
   };
@@ -167,12 +175,14 @@ export async function toDetailDto(access: ArtifactAccess, opts: { includeShareTo
     ...toArtifactDto({ artifact: a, versionNo: version?.versionNo ?? null, creatorName: creator?.name ?? null }, access),
     content: version?.content ?? null,
     shareToken: access.canManage && opts.includeShareToken !== false ? a.shareToken : null,
-    generationConfig: {
-      customPrompt: cfg.customPrompt,
-      options: cfg.options as ArtifactOptions | undefined,
-      scope: cfg.scope,
-      model: cfg.model,
-    },
+    generationConfig: access.internal
+      ? {
+          customPrompt: cfg.customPrompt,
+          options: cfg.options as ArtifactOptions | undefined,
+          scope: cfg.scope,
+          model: cfg.model,
+        }
+      : null,
   };
 }
 
@@ -369,7 +379,9 @@ export async function createArtifact(params: {
     model: input.model || undefined,
     titleAuto: !input.title,
   };
-  const visibility = await notebookDefaultVisibility(notebookId);
+  // Phạm vi có nguồn riêng tư → artifact mặc định RIÊNG TƯ và bị đánh dấu (bất biến §3.4: không lộ nguồn riêng tư khi chia sẻ).
+  const containsPrivateSources = (await privateSourceIdsAmong(sourceIds)).size > 0;
+  const visibility = containsPrivateSources ? "private" : await notebookDefaultVisibility(notebookId);
   const [row] = await db
     .insert(artifacts)
     .values({
@@ -379,6 +391,7 @@ export async function createArtifact(params: {
       title: input.title ?? defaultTitle(input.type),
       status: "queued",
       visibility,
+      containsPrivateSources,
       generationConfig: config as Record<string, unknown>,
     })
     .returning();
@@ -386,6 +399,13 @@ export async function createArtifact(params: {
   await enqueue("generate_artifact", payload);
   emitArtifactEvent(row, "created");
   return row;
+}
+
+export function privateSourcesConflict(): ApiError {
+  return ApiError.conflict(
+    "Phạm vi đã chọn có nguồn riêng tư nhưng artifact này đang được chia sẻ. Hãy chuyển artifact sang Riêng tư hoặc bỏ nguồn riêng tư khỏi phạm vi.",
+    "private_sources_in_shared_artifact",
+  );
 }
 
 /** Tạo lại: job mới, giữ nguyên lịch sử phiên bản (kết quả thành phiên bản mới). */
@@ -402,7 +422,13 @@ export async function regenerateArtifact(artifact: Artifact, userId: string, inp
     ...(input.scope !== undefined ? { scope: input.scope.sourceIds?.length ? { sourceIds: input.scope.sourceIds } : undefined } : {}),
     ...(input.model !== undefined ? { model: input.model || undefined } : {}),
   };
-  const sourceIds = await resolveScopeSourceIds(artifact.notebookId, userId, next.scope?.sourceIds);
+  const isPrivate = artifact.visibility === "private";
+  const sourceIds = await resolveScopeSourceIds(artifact.notebookId, userId, next.scope?.sourceIds, { allowPrivate: isPrivate });
+  if (!isPrivate && next.scope?.sourceIds?.length) {
+    // Phạm vi chọn tay có nguồn riêng tư nhưng artifact đang chia sẻ → từ chối rõ ràng thay vì lặng lẽ bỏ nguồn.
+    const withPrivate = await resolveScopeSourceIds(artifact.notebookId, userId, next.scope.sourceIds);
+    if ((await privateSourceIdsAmong(withPrivate)).size > 0) throw privateSourcesConflict();
+  }
   if (sourceIds.length === 0) {
     throw new ApiError(400, "no_sources", "Chưa có nguồn nào sẵn sàng trong phạm vi đã chọn.");
   }
@@ -457,7 +483,8 @@ export async function forkArtifact(artifact: Artifact, userId: string): Promise<
   if (!artifact.currentVersionId) throw ApiError.conflict("Artifact chưa có nội dung để nhân bản", "not_ready");
   const [cur] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId)).limit(1);
   if (!cur) throw ApiError.conflict("Artifact chưa có nội dung để nhân bản", "not_ready");
-  const visibility = await notebookDefaultVisibility(artifact.notebookId);
+  // Bản sao của artifact chứa nguồn riêng tư cũng phải riêng tư.
+  const visibility = artifact.containsPrivateSources ? "private" : await notebookDefaultVisibility(artifact.notebookId);
   const copy = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(artifacts)
@@ -468,6 +495,7 @@ export async function forkArtifact(artifact: Artifact, userId: string): Promise<
         title: t("studio.fork.title", { title: artifact.title }).slice(0, 200),
         status: "ready",
         visibility,
+        containsPrivateSources: artifact.containsPrivateSources,
         generationConfig: { ...configOf(artifact), titleAuto: false } as Record<string, unknown>,
         forkedFromId: artifact.id,
       })
@@ -510,7 +538,17 @@ export async function setVisibility(
   if (visibility === "public" && actor.role !== "owner") {
     throw ApiError.forbidden("Chỉ chủ sở hữu sổ tay được chia sẻ công khai");
   }
-  const token = visibility === "link" ? (opts.rotateToken || !artifact.shareToken ? randomToken(24) : artifact.shareToken) : artifact.shareToken;
+  if (artifact.containsPrivateSources && visibility !== "private") {
+    throw ApiError.conflict(
+      "Artifact này được tạo từ nguồn riêng tư nên chỉ có thể ở chế độ Riêng tư. Hãy tạo lại từ các nguồn chia sẻ nếu muốn chia sẻ.",
+      "private_sources_not_shareable",
+    );
+  }
+  // Token chia sẻ: thu hồi khi rời khỏi link/public; luôn sinh token MỚI khi (lại) bật link để liên kết cũ không sống lại (M-2).
+  const wasTokenVisible = artifact.visibility === "link" || artifact.visibility === "public";
+  let token = artifact.shareToken;
+  if (visibility === "private" || visibility === "notebook") token = null;
+  else if (visibility === "link") token = opts.rotateToken || !wasTokenVisible || !token ? randomToken(24) : token;
   const [row] = await db
     .update(artifacts)
     .set({ visibility, shareToken: token, updatedAt: new Date() })
@@ -592,9 +630,10 @@ export async function removeShare(artifactId: string, shareId: string): Promise<
 export async function findArtifactByToken(token: string): Promise<Artifact | null> {
   if (!token || token.length < 16) return null;
   const [row] = await db
-    .select()
+    .select({ artifact: artifacts })
     .from(artifacts)
+    .innerJoin(notebooks, and(eq(notebooks.id, artifacts.notebookId), isNull(notebooks.deletedAt)))
     .where(and(eq(artifacts.shareToken, token), isNull(artifacts.deletedAt)))
     .limit(1);
-  return row ?? null;
+  return row?.artifact ?? null;
 }

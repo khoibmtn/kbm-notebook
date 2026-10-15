@@ -1,5 +1,6 @@
 import { chatEn } from "./modules/chat.en";
 import { connectorsEn } from "./modules/connectors.en";
+import { securityEn } from "./modules/security.en";
 import { slidesEn } from "./modules/slides.en";
 import { studioEn } from "./modules/studio.en";
 import type { MessageKey } from "./vi";
@@ -136,6 +137,7 @@ export const en: Record<MessageKey, string> = {
   ...chatEn,
   ...connectorsEn,
   ...slidesEn,
+  ...securityEn,
   ...studioEn,
   "app.name": "KBM Notebook",
   "app.description": "Learn and collaborate with AI: sources, cited chat, studio and team chat.",

@@ -1,4 +1,4 @@
-import { handleRoute } from "@/server/api/errors";
+import { ApiError, handleRoute } from "@/server/api/errors";
 import { getSession } from "@/server/auth/session";
 import { getVersion, loadArtifactAccess } from "@/server/artifacts/service";
 
@@ -11,6 +11,7 @@ export const GET = handleRoute<P>(async (req, { params }) => {
   const token = new URL(req.url).searchParams.get("token");
   const access = await loadArtifactAccess(session?.user.id ?? null, artifactId, { shareToken: token });
   const v = await getVersion(access.artifact.id, versionId);
+  if (!access.internal && v.id !== access.artifact.currentVersionId) throw ApiError.notFound("Không tìm thấy phiên bản");
   return {
     version: {
       id: v.id,

@@ -157,6 +157,8 @@ export type ArtifactDto = {
   currentVersionId: string | null;
   currentVersionNo: number | null;
   forkedFromId: string | null;
+  /** Nội dung được sinh từ nguồn riêng tư → chỉ ở chế độ riêng tư, không chuyển sang sổ tay/liên kết/công khai được. */
+  containsPrivateSources: boolean;
   /** Người gọi được sửa nội dung. */
   canEdit: boolean;
   /** Người gọi được đổi chia sẻ/xoá. */

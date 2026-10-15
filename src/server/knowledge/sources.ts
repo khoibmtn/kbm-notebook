@@ -1,6 +1,6 @@
 import "server-only";
-import { and, asc, desc, eq, getTableColumns, isNull, or, sql } from "drizzle-orm";
-import { ApiError } from "@/server/api/errors";
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, or, sql } from "drizzle-orm";
+import { ApiError, isUuid } from "@/server/api/errors";
 import { canViewSource, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
 import { db } from "@/server/db";
@@ -414,6 +414,17 @@ export async function reprocessSource(row: Source): Promise<Source> {
   if (!updated) throw ApiError.notFound("Không tìm thấy nguồn");
   await enqueueIngest(updated);
   return updated;
+}
+
+/** Trong `ids`, những nguồn nào đang ở chế độ riêng tư (kể cả nguồn đã xoá mềm — thận trọng). */
+export async function privateSourceIdsAmong(ids: string[]): Promise<Set<string>> {
+  const valid = [...new Set(ids)].filter(isUuid);
+  if (valid.length === 0) return new Set();
+  const rows = await db
+    .select({ id: sources.id })
+    .from(sources)
+    .where(and(inArray(sources.id, valid), eq(sources.visibility, "private")));
+  return new Set(rows.map((r) => r.id));
 }
 
 /** Id các nguồn `ready` mà user được dùng trong notebook (cho P2/P3 khi cần mặc định "tất cả"). */

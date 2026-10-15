@@ -28,6 +28,17 @@ export async function getNotebookRole(userId: string, notebookId: string): Promi
   return rows[0]?.role ?? null;
 }
 
+/** Sổ tay còn tồn tại và chưa bị xoá mềm. */
+export async function isNotebookActive(notebookId: string): Promise<boolean> {
+  if (!isUuid(notebookId)) return false;
+  const rows = await db
+    .select({ id: notebooks.id })
+    .from(notebooks)
+    .where(and(eq(notebooks.id, notebookId), isNull(notebooks.deletedAt)))
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Bắt buộc user có vai trò >= min trong notebook.
  * - Notebook không tồn tại / đã xoá / user không phải thành viên → 404 (không lộ sự tồn tại).
@@ -78,6 +89,8 @@ export async function canViewArtifact(
   opts: { shareToken?: string | null } = {},
 ): Promise<boolean> {
   if (artifact.deletedAt) return false;
+  // Sổ tay đã xoá (mềm) → artifact không còn xem được bởi bất kỳ ai, kể cả liên kết/công khai (H-6).
+  if (!(await isNotebookActive(artifact.notebookId))) return false;
   if (artifact.visibility === "public") return true;
   if (artifact.visibility === "link" && opts.shareToken && artifact.shareToken) {
     if (safeEqual(opts.shareToken, artifact.shareToken)) return true;

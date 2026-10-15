@@ -4,6 +4,7 @@ import { ApiError } from "@/server/api/errors";
 import type { Role } from "@/server/auth/permissions";
 import { db } from "@/server/db";
 import { messages, savedExchanges } from "@/server/db/schema";
+import { privateSourceIdsAmong } from "@/server/knowledge/sources";
 import { answerToNoteMarkdown } from "@/server/notes/from-chat";
 import { createNote, toNoteDto } from "@/server/notes/service";
 import type { ChatMessageDto } from "@/lib/chat";
@@ -82,11 +83,15 @@ export async function answerToNote(input: {
   answerMessageId: string;
 }): Promise<NoteDto> {
   const { answer, question } = await resolveExchange(input.userId, input.notebookId, input.conversationId, input.answerMessageId);
+  // Câu trả lời dựa trên bằng chứng từ nguồn RIÊNG TƯ → ghi chú mặc định riêng tư (không lộ khi chia sẻ sổ tay).
+  const evidenceSourceIds = (answer.citations ?? []).flatMap((c) => (c.sourceId ? [c.sourceId] : []));
+  const usesPrivate = (await privateSourceIdsAmong(evidenceSourceIds)).size > 0;
   const row = await createNote({
     notebookId: input.notebookId,
     userId: input.userId,
     title: titleFromQuestion(question.content, 100),
     contentMd: answerToNoteMarkdown(answer.content, answer.citations ?? []),
+    visibility: usesPrivate ? "private" : "shared",
     origin: "chat",
     originRef: { conversationId: answer.conversationId, messageId: answer.id },
   });

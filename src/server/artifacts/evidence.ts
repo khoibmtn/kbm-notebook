@@ -4,7 +4,7 @@ import { ApiError } from "@/server/api/errors";
 import { db } from "@/server/db";
 import { sourceChunks, sources } from "@/server/db/schema";
 import { retrieve } from "@/server/knowledge/retrieve";
-import { listReadySourceIds } from "@/server/knowledge/sources";
+import { listReadySourceIds, privateSourceIdsAmong } from "@/server/knowledge/sources";
 import type { Evidence, EvidenceLocator, RetrieveQuery } from "@/server/knowledge/providers/types";
 import type { ArtifactTypeName } from "@/lib/artifacts/content";
 
@@ -41,6 +41,22 @@ export const EVIDENCE_PROFILES: Record<ArtifactTypeName, EvidenceProfile> = {
 
 const MAX_QUERIES = 40;
 
+/**
+ * Bỏ phần văn bản (`text`) của bằng chứng thuộc nguồn riêng tư khỏi `content.evidence` — chỉ giữ id/nguồn/tiêu đề/vị trí.
+ * Dùng khi nội dung sẽ nằm trong artifact không riêng tư; trích dẫn vẫn mở được trình xem nguồn (kiểm quyền theo người xem).
+ */
+export function stripPrivateEvidenceText<T>(content: T, privateSourceIds: Set<string>): T {
+  if (privateSourceIds.size === 0 || !content || typeof content !== "object") return content;
+  const obj = content as Record<string, unknown>;
+  const ev = obj.evidence;
+  if (!Array.isArray(ev)) return content;
+  const next = ev.map((e) => {
+    const item = e as { sourceId?: string | null };
+    return item && typeof item === "object" && item.sourceId && privateSourceIds.has(item.sourceId) ? { ...item, text: "" } : e;
+  });
+  return { ...obj, evidence: next } as T;
+}
+
 export type CollectedEvidence = {
   evidence: Evidence[];
   strategy: "full" | "multi_query";
@@ -76,9 +92,21 @@ async function loadSources(ids: string[]): Promise<SourceRow[]> {
   return rows;
 }
 
-/** Nguồn dùng được = `scope.sourceIds` ∩ nguồn `ready` người tạo được xem (mặc định: tất cả). */
-export async function resolveScopeSourceIds(notebookId: string, userId: string, requested?: string[] | null): Promise<string[]> {
-  const ready = await listReadySourceIds(notebookId, userId);
+/**
+ * Nguồn dùng được = `scope.sourceIds` ∩ nguồn `ready` người tạo được xem (mặc định: tất cả).
+ * `allowPrivate: false` (artifact đang chia sẻ cho sổ tay/liên kết) loại mọi nguồn riêng tư khỏi phạm vi (bất biến §3.4).
+ */
+export async function resolveScopeSourceIds(
+  notebookId: string,
+  userId: string,
+  requested?: string[] | null,
+  opts: { allowPrivate?: boolean } = {},
+): Promise<string[]> {
+  let ready = await listReadySourceIds(notebookId, userId);
+  if (opts.allowPrivate === false) {
+    const priv = await privateSourceIdsAmong(ready);
+    ready = ready.filter((id) => !priv.has(id));
+  }
   if (!requested || requested.length === 0) return ready;
   const allowed = new Set(ready);
   return requested.filter((id) => allowed.has(id));
@@ -154,6 +182,8 @@ export async function collectEvidence(
     notebookId: string;
     userId: string;
     sourceIds?: string[] | null;
+    /** `false` = chỉ dùng nguồn chia sẻ (artifact không riêng tư). Mặc định `true`. */
+    allowPrivate?: boolean;
     instructions?: string;
     budget?: number;
     onProgress?: (done: number, total: number) => void | Promise<void>;
@@ -164,7 +194,7 @@ export async function collectEvidence(
   const budget = params.budget ?? profile.budget;
   const retrieveFn = deps.retrieveFn ?? ((q: RetrieveQuery) => retrieve(q));
 
-  const sourceIds = await resolveScopeSourceIds(params.notebookId, params.userId, params.sourceIds);
+  const sourceIds = await resolveScopeSourceIds(params.notebookId, params.userId, params.sourceIds, { allowPrivate: params.allowPrivate });
   if (sourceIds.length === 0) {
     throw new ApiError(400, "no_sources", "Chưa có nguồn nào sẵn sàng trong phạm vi đã chọn. Hãy thêm hoặc chọn nguồn đã xử lý xong.");
   }

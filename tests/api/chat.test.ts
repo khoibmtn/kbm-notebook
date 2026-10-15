@@ -465,4 +465,19 @@ describe("lưu cặp hỏi-đáp và chuyển thành ghi chú", () => {
     const list = await call<{ notes: NoteListItem[] }>(await listNotes(makeRequest("/x", { user: owner }), params({ id: notebook.id })));
     expect(list.notes.map((n) => n.id)).toContain(note.id);
   });
+
+  it("H-5 · to-note từ câu trả lời dùng nguồn riêng tư → ghi chú riêng tư (không lộ cho thành viên khác)", async () => {
+    const { notebook, members, owner } = await ctxWithSource(["editor"]);
+    await readySource(notebook.id, members.editor, "Nhật ký riêng", "Bí mật riêng: ty thể là nhà máy năng lượng của tế bào.", { visibility: "private" });
+    const conv = await newConversation(notebook.id, members.editor);
+    canned.answer = "Ty thể là nhà máy năng lượng [1].";
+    const { body } = await askJson(notebook.id, conv.id, members.editor, { question: "Ty thể là nhà máy năng lượng của tế bào đúng không?", scope: {} });
+    expect(body.message.citations?.some((c) => c.sourceTitle === "Nhật ký riêng")).toBe(true);
+    const res = await toNote(makeRequest("/x", { method: "POST", user: members.editor }), params({ id: notebook.id, conversationId: conv.id, messageId: body.message.id }));
+    expect(res.status).toBe(201);
+    const { note } = await call<{ note: NoteDto }>(res);
+    expect(note.visibility).toBe("private");
+    const ownerList = await call<{ notes: NoteListItem[] }>(await listNotes(makeRequest("/x", { user: owner }), params({ id: notebook.id })));
+    expect(ownerList.notes.map((n) => n.id)).not.toContain(note.id);
+  });
 });

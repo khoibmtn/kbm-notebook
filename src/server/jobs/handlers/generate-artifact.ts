@@ -5,7 +5,8 @@ import { getAiProviderForUser, getUserModels } from "@/server/ai";
 import { buildContext } from "@/server/ai/context";
 import type { AiProvider } from "@/server/ai/provider";
 import { composePrompt } from "@/server/artifacts/prompt";
-import { collectEvidence, EVIDENCE_PROFILES, type CollectDeps } from "@/server/artifacts/evidence";
+import { collectEvidence, EVIDENCE_PROFILES, stripPrivateEvidenceText, type CollectDeps } from "@/server/artifacts/evidence";
+import { privateSourceIdsAmong } from "@/server/knowledge/sources";
 import { runGenerator } from "@/server/artifacts/generators";
 import type { SlideDeckContent } from "@/server/artifacts/registry";
 import { persistSlideImages } from "@/server/artifacts/slide-images";
@@ -94,6 +95,8 @@ export async function generateArtifactNow(
         notebookId: artifact.notebookId,
         userId,
         sourceIds: cfg.scope?.sourceIds,
+        // Artifact không riêng tư (chia sẻ cho sổ tay/liên kết) KHÔNG được dùng nguồn riêng tư.
+        allowPrivate: artifact.visibility === "private",
         instructions: cfg.customPrompt ?? "",
         onProgress: (done, total) => report(5 + Math.round((done / Math.max(total, 1)) * 40), t("studio.stage.retrieving")),
       },
@@ -128,9 +131,23 @@ export async function generateArtifactNow(
     await report(90, t("studio.stage.saving"));
     // Ảnh AI do engine slide trả dạng dataUrl → lưu vào kho tệp, thay bằng fileId trước khi ghi phiên bản.
     const raw = artifact.type === "slide_deck" ? await persistSlideImages(generated.content as SlideDeckContent, userId, artifact) : generated.content;
-    const content = contentSchemaFor(artifact.type).parse(raw);
+    // Bất biến §3.4: nội dung từ nguồn riêng tư chỉ ở chế độ riêng tư; bản chất evidence của nguồn riêng tư không rời artifact riêng tư.
+    const privateIds = await privateSourceIdsAmong(collected.sourceIds);
+    const containsPrivateSources = privateIds.size > 0;
+    const [live] = await db.select({ visibility: artifacts.visibility }).from(artifacts).where(eq(artifacts.id, artifact.id)).limit(1);
+    const parsed = contentSchemaFor(artifact.type).parse(raw);
+    // Artifact riêng tư: giữ nguyên văn bằng chứng. Nếu (do đổi visibility giữa chừng) nó chưa riêng tư thì bỏ `text` của nguồn riêng tư.
+    const content = live?.visibility === "private" ? parsed : stripPrivateEvidenceText(parsed, privateIds);
     const note = payload.reason === "create" ? t("studio.version.generatedNote") : t("studio.version.regeneratedNote");
     const version = await addVersion(artifact.id, { content, userId, note, setStatusReady: true });
+    await db
+      .update(artifacts)
+      .set({
+        containsPrivateSources,
+        // Phòng trường hợp visibility đổi trong lúc job chạy: nội dung có nguồn riêng tư thì ép riêng tư và thu hồi liên kết.
+        ...(containsPrivateSources ? { visibility: "private" as const, shareToken: null } : {}),
+      })
+      .where(eq(artifacts.id, artifact.id));
     if (cfg.titleAuto && generated.title) {
       await db.update(artifacts).set({ title: generated.title.slice(0, 200) }).where(eq(artifacts.id, artifact.id));
     }
