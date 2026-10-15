@@ -20,6 +20,7 @@ import { useStoredFlag } from "@/lib/use-stored-flag";
 import { MembersDialog } from "@/components/notebook/members-panel";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { NotebookTitle } from "@/components/notebook/notebook-title";
+import { TipBar } from "@/components/notebook/tip-bar";
 import { CommandPaletteTrigger } from "@/components/shared/command-palette";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { UserMenu } from "@/components/shared/user-menu";
@@ -160,7 +161,10 @@ export function NotebookShell({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </aside>
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <TipBar />
+          {children}
+        </main>
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

@@ -3,16 +3,16 @@ import { Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CreateNotebookDialog } from "@/components/dashboard/create-notebook-dialog";
+import { OnboardingGuide } from "@/components/dashboard/onboarding-guide";
 import { RoleBadge, type RoleName } from "@/components/dashboard/role-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { NotebookCover } from "@/components/shared/notebook-cover";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { DEFAULT_COVER_COLOR } from "@/lib/notebook-colors";
-import { BookOpen } from "lucide-react";
 
 export type NotebookCardData = {
   id: string;
@@ -60,17 +60,7 @@ export function NotebookGrid({ initial }: { initial: NotebookCardData[] }) {
       </div>
 
       {initial.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title={t("dashboard.empty.title")}
-          description={t("dashboard.empty.description")}
-          action={
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus /> {t("dashboard.create")}
-            </Button>
-          }
-          className="rounded-xl border border-dashed py-16"
-        />
+        <OnboardingGuide />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Search} title={t("dashboard.noMatch")} className="py-16" />
       ) : (
@@ -79,12 +69,7 @@ export function NotebookGrid({ initial }: { initial: NotebookCardData[] }) {
             <li key={n.id}>
               <Link href={`/n/${n.id}`} className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Card className="gap-0 overflow-hidden p-0 transition-shadow group-hover:shadow-md">
-                  <div
-                    className="flex h-20 items-end px-4 pb-2 text-3xl"
-                    style={{ backgroundColor: n.coverColor ?? DEFAULT_COVER_COLOR }}
-                  >
-                    <span aria-hidden>{n.emoji ?? "📓"}</span>
-                  </div>
+                  <NotebookCover color={n.coverColor} emoji={n.emoji} className="h-20 px-4 pb-2 text-3xl" />
                   <div className="space-y-3 p-4">
                     <div className="space-y-1">
                       <h2 className="line-clamp-1 font-medium">{n.title}</h2>

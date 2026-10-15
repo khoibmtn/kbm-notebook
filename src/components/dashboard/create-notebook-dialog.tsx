@@ -67,7 +67,16 @@ export function EmojiColorPicker({
   );
 }
 
-export function CreateNotebookDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function CreateNotebookDialog({
+  open,
+  onOpenChange,
+  next = "",
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** Đường dẫn con mở sau khi tạo, vd. `/sources?add=1` (hướng dẫn làm quen). */
+  next?: string;
+}) {
   const t = useT();
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -87,7 +96,7 @@ export function CreateNotebookDialog({ open, onOpenChange }: { open: boolean; on
       });
       toast.success(t("notebook.created"));
       onOpenChange(false);
-      router.push(`/n/${notebook.id}`);
+      router.push(`/n/${notebook.id}${next}`);
       router.refresh();
     } catch (err) {
       toast.error(errorMessage(err, t("common.error")));

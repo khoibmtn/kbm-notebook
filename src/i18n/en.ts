@@ -1,4 +1,5 @@
 import { chatEn } from "./modules/chat.en";
+import { communityEn } from "./modules/community.en";
 import { connectorsEn } from "./modules/connectors.en";
 import { securityEn } from "./modules/security.en";
 import { slidesEn } from "./modules/slides.en";
@@ -135,6 +136,7 @@ export const en: Record<MessageKey, string> = {
   "notifications.empty": "No notifications yet",
 
   ...chatEn,
+  ...communityEn,
   ...connectorsEn,
   ...slidesEn,
   ...securityEn,
@@ -227,8 +229,6 @@ export const en: Record<MessageKey, string> = {
   "dashboard.create": "New notebook",
   "dashboard.create.description": "Each notebook is a dedicated space for your sources, AI conversations and team.",
   "dashboard.create.submit": "Create",
-  "dashboard.empty.title": "You have no notebooks yet",
-  "dashboard.empty.description": "Create your first notebook to start collecting documents and learning with AI.",
   "dashboard.noMatch": "No notebook matches your search",
 
   "notebook.title": "Title",

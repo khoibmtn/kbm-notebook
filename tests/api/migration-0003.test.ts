@@ -11,7 +11,7 @@ import * as schema from "@/server/db/schema";
 const { artifactFiles, artifactVersions, artifacts, files, notebookMembers, notebooks, sources, users } = schema;
 
 /**
- * Chạy phần "backfill" của migration 0002 trên dữ liệu cũ. Dùng DB tạm riêng để lệnh UPDATE toàn bảng
+ * Chạy phần "backfill" của migration 0003 trên dữ liệu cũ. Dùng DB tạm riêng để lệnh UPDATE toàn bảng
  * không đụng dữ liệu của các file test khác đang chạy song song.
  */
 const baseUrl = process.env.TEST_DATABASE_URL ?? "postgres://kbm:kbm@localhost:5432/kbm_notebook_test";
@@ -47,7 +47,7 @@ afterAll(async () => {
 });
 
 async function runBackfill(): Promise<void> {
-  const text = fs.readFileSync(path.resolve(process.cwd(), "drizzle/0002_security_indexes.sql"), "utf8");
+  const text = fs.readFileSync(path.resolve(process.cwd(), "drizzle/0003_security_indexes.sql"), "utf8");
   const start = text.indexOf("-- ===== Dữ liệu hiện có");
   expect(start).toBeGreaterThan(0);
   for (const stmt of text.slice(start).split("--> statement-breakpoint")) {
@@ -78,7 +78,7 @@ async function mkArtifact(notebookId: string, createdBy: string, type: "slide_de
   return a;
 }
 
-describe("migration 0002: backfill dữ liệu cũ", () => {
+describe("migration 0003: backfill dữ liệu cũ", () => {
   it("artifact_files chỉ nhận tệp do chủ artifact / thành viên sở hữu; files.notebook_id/origin được điền", async () => {
     const owner = await mkUser("owner");
     const editor = await mkUser("editor");

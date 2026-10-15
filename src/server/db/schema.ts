@@ -117,6 +117,7 @@ export const teamMessageKindEnum = pgEnum("team_message_kind", [
   "system",
 ]);
 export const groupVisibilityEnum = pgEnum("group_visibility", ["private", "public"]);
+export const joinRequestStatusEnum = pgEnum("join_request_status", ["pending", "accepted", "rejected"]);
 export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "done", "failed"]);
 
 /* -------------------------------------------------------------------------- */
@@ -494,7 +495,12 @@ export const notes = pgTable(
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  (t) => [index("notes_notebook_idx").on(t.notebookId)],
+  (t) => [
+    index("notes_notebook_idx").on(t.notebookId),
+    // Tìm kiếm toàn cục (P6): full-text trên tiêu đề + nội dung, trigram cho tiêu đề.
+    index("notes_search_gin").using("gin", sql`to_tsvector('simple', ${t.title} || ' ' || ${t.contentMd})`),
+    index("notes_title_trgm").using("gin", sql`${t.title} gin_trgm_ops`),
+  ],
 );
 
 export const savedExchanges = pgTable("saved_exchanges", {
@@ -548,7 +554,12 @@ export const artifacts = pgTable(
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  (t) => [index("artifacts_notebook_idx").on(t.notebookId)],
+  (t) => [
+    index("artifacts_notebook_idx").on(t.notebookId),
+    index("artifacts_title_trgm").using("gin", sql`${t.title} gin_trgm_ops`),
+    // Explore (P6): liệt kê artifact công khai theo thời gian.
+    index("artifacts_public_idx").on(t.createdAt).where(sql`${t.visibility} = 'public' and ${t.deletedAt} is null`),
+  ],
 );
 
 export const artifactVersions = pgTable(
@@ -565,7 +576,10 @@ export const artifactVersions = pgTable(
     note: text("note"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("artifact_versions_no_uq").on(t.artifactId, t.versionNo)],
+  (t) => [
+    uniqueIndex("artifact_versions_no_uq").on(t.artifactId, t.versionNo),
+    index("artifact_versions_md_gin").using("gin", sql`to_tsvector('simple', coalesce(${t.contentMd}, ''))`),
+  ],
 );
 
 export const artifactExports = pgTable("artifact_exports", {
@@ -744,17 +758,21 @@ export const notifications = pgTable(
 /* Community                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export const groups = pgTable("groups", {
-  id: id(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  description: text("description"),
-  ownerId: uuid("owner_id")
-    .notNull()
-    .references(() => users.id),
-  visibility: groupVisibilityEnum("visibility").default("private").notNull(),
-  createdAt: createdAt(),
-});
+export const groups = pgTable(
+  "groups",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull().unique(),
+    description: text("description"),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    visibility: groupVisibilityEnum("visibility").default("private").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("groups_name_trgm").using("gin", sql`${t.name} gin_trgm_ops`)],
+);
 
 export const groupMembers = pgTable(
   "group_members",
@@ -815,6 +833,31 @@ export const artifactComments = pgTable(
   (t) => [index("artifact_comments_artifact_idx").on(t.artifactId)],
 );
 
+/** Yêu cầu tham gia sổ tay công khai (P6): người ngoài gửi, owner/admin duyệt → thêm làm `viewer`. */
+export const notebookJoinRequests = pgTable(
+  "notebook_join_requests",
+  {
+    id: id(),
+    notebookId: uuid("notebook_id")
+      .notNull()
+      .references(() => notebooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    message: text("message"),
+    status: joinRequestStatusEnum("status").default("pending").notNull(),
+    createdAt: createdAt(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("notebook_join_requests_notebook_idx").on(t.notebookId, t.status),
+    uniqueIndex("notebook_join_requests_pending_uq")
+      .on(t.notebookId, t.userId)
+      .where(sql`${t.status} = 'pending'`),
+  ],
+);
+
 /* -------------------------------------------------------------------------- */
 /* Hạ tầng                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -873,6 +916,8 @@ export type ArtifactVersionRow = typeof artifactVersions.$inferSelect;
 export type ArtifactExportRow = typeof artifactExports.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
+export type Group = typeof groups.$inferSelect;
+export type JoinRequest = typeof notebookJoinRequests.$inferSelect;
 export type Role = (typeof memberRoleEnum.enumValues)[number];
 export type NotebookConnection = typeof notebookConnections.$inferSelect;
 export type ConnectionSource = typeof connectionSources.$inferSelect;

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx --tsconfig tsconfig.server.json server.ts",
     "build": "next build && pnpm build:server",
-    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --tsconfig=tsconfig.server.json --outfile=dist/server.js && esbuild src/server/knowledge/ingest/extract-worker.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --tsconfig=tsconfig.server.json --outfile=dist/extract-worker.js",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --tsconfig=tsconfig.server.json --outfile=dist/server.js && esbuild src/server/knowledge/ingest/extract-worker.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --tsconfig=tsconfig.server.json --outfile=dist/extract-worker.js && esbuild src/server/db/migrate.ts --bundle --platform=node --target=node22 --format=cjs --packages=external --outfile=dist/migrate.js",
     "start": "NODE_ENV=production node dist/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

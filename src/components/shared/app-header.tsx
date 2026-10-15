@@ -1,8 +1,9 @@
-import { BookOpenText } from "lucide-react";
+import { BookOpenText, Compass } from "lucide-react";
 import Link from "next/link";
 import { CommandPaletteTrigger } from "@/components/shared/command-palette";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { UserMenu, type MenuUser } from "@/components/shared/user-menu";
+import { Button } from "@/components/ui/button";
 import { getT } from "@/i18n/server";
 
 /** Thanh trên cho trang ngoài sổ tay (dashboard, cài đặt toàn cục). */
@@ -17,6 +18,11 @@ export async function AppHeader({ user }: { user: MenuUser }) {
         <span className="hidden sm:inline">{t("app.name")}</span>
       </Link>
       <div className="flex items-center gap-1">
+        <Button asChild variant="ghost" size="sm" data-testid="nav-explore">
+          <Link href="/explore" aria-label={t("nav.explore")}>
+            <Compass /> <span className="hidden sm:inline">{t("nav.explore")}</span>
+          </Link>
+        </Button>
         <CommandPaletteTrigger />
         <NotificationBell />
         <UserMenu user={user} />

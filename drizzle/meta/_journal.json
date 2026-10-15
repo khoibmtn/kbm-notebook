@@ -19,8 +19,15 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1792060152300,
-      "tag": "0002_security_indexes",
+      "when": 1792056657083,
+      "tag": "0002_community_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792062860092,
+      "tag": "0003_security_indexes",
       "breakpoints": true
     }
   ]

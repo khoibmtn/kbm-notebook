@@ -64,8 +64,10 @@ Ma trận quyền:
 - `notifications(id, user_id, type, title, body, link, data jsonb, read_at, created_at)`.
 
 ## Community
-- `groups(id, name, slug, description, owner_id, visibility)` + `group_members` + `group_notebooks` (giai đoạn 2; MVP: Explore dùng `artifacts.visibility='public'` và `notebooks.is_public`).
+- `groups(id, name, slug unique, description, owner_id, visibility 'private'|'public', created_at)` + `group_members(group_id, user_id, role owner|admin|viewer, joined_at)` + `group_notebooks(group_id, notebook_id)`. `visibility='public'` = ai cũng tham gia được; `'private'` = chỉ theo lời mời. Vai trò `viewer` hiển thị là "Thành viên".
 - `artifact_likes(artifact_id, user_id)`, `artifact_comments(id, artifact_id, user_id, body, created_at)`.
+- `notebook_join_requests(id, notebook_id, user_id, message, status 'pending'|'accepted'|'rejected', created_at, decided_at, decided_by)` (P6, migration `0002`): yêu cầu tham gia sổ tay công khai; duy nhất một yêu cầu `pending` mỗi (sổ tay, người dùng).
+- Explore dùng `artifacts.visibility='public'` (đã `ready`, chưa xoá) và `notebooks.is_public` + `public_slug` (trang `/p/<slug>` chỉ lộ tiêu đề/mô tả/emoji/artifact công khai).
 
 ## Hạ tầng
 - `jobs(id, type, payload jsonb, status enum('queued','running','done','failed'), attempts, max_attempts 3, run_at, locked_at, locked_by, progress int, result jsonb, error, created_at, updated_at)`.

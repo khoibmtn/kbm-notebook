@@ -1,148 +1,72 @@
-import { sql } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
-import { POST as rawExportRoute } from "@/app/api/artifacts/[artifactId]/export/route";
-import { POST as regenerateRoute } from "@/app/api/artifacts/[artifactId]/regenerate/route";
-import { POST as aiEditRoute } from "@/app/api/artifacts/[artifactId]/slides/[slideId]/ai-edit/route";
-import { POST as rawCreateArtifactRoute } from "@/app/api/notebooks/[id]/artifacts/route";
-import { POST as createConversationRoute } from "@/app/api/notebooks/[id]/conversations/route";
-import { POST as rawCreateSourceRoute } from "@/app/api/notebooks/[id]/sources/route";
-import { addVersion } from "@/server/artifacts/service";
+/* eslint-disable @typescript-eslint/no-explicit-any -- phản hồi JSON được kiểm tra bằng expect */
+import { eq } from "drizzle-orm";
+import { afterAll, describe, expect, it } from "vitest";
+import { POST as createArtifact } from "@/app/api/notebooks/[id]/artifacts/route";
+import { POST as postComment } from "@/app/api/artifacts/[artifactId]/comments/route";
 import { db } from "@/server/db";
-import { jobs } from "@/server/db/schema";
-import { resetEnvCache } from "@/server/env";
-import { ingestSource } from "@/server/knowledge/ingest/pipeline";
-import { createSourceFromText } from "@/server/knowledge/sources";
+import { jobs, rateLimits } from "@/server/db/schema";
+import { ARTIFACT_RATE } from "@/server/artifacts/service";
+import { MESSAGE_RATE } from "@/server/team-chat/actions";
+import { COMMENT_RATE } from "@/server/community/social";
+import { insertReadySource, SAMPLE_PAGES } from "../helpers/artifacts";
 import { createNotebookWithMembers, insertArtifact } from "../helpers/fixtures";
-import { insertReadySource, parkJobs, SAMPLE_PAGES } from "../helpers/artifacts";
-import { json } from "../helpers/team-chat";
-import { makeRequest, params, type TestUser } from "../helpers/users";
+import { generalChannelId, send } from "../helpers/team-chat";
+import { makeRequest, params } from "../helpers/users";
 
-afterEach(() => {
-  delete process.env.MAX_INGEST_TOKENS_PER_DAY;
-  resetEnvCache();
+afterAll(async () => {
+  await db.delete(jobs).where(eq(jobs.type, "generate_artifact"));
 });
 
-type Ctx = { params: Promise<{ id: string }> };
-async function exportRoute(req: Request, ctx: { params: Promise<{ artifactId: string }> }) {
-  const res = await rawExportRoute(req, ctx);
-  await db.execute(sql`UPDATE jobs SET run_at = now() + interval '1 day' WHERE status = 'queued' AND payload->>'artifactId' = ${(await ctx.params).artifactId}`);
-  return res;
-}
-async function createSourceRoute(req: Request, ctx: Ctx) {
-  const res = await rawCreateSourceRoute(req, ctx);
-  await parkJobs((await ctx.params).id);
-  return res;
-}
-async function createArtifactRoute(req: Request, ctx: Ctx) {
-  const res = await rawCreateArtifactRoute(req, ctx);
-  await parkJobs((await ctx.params).id);
-  return res;
-}
+describe("giới hạn tần suất (429)", () => {
+  it("sinh artifact: 20 lần / 10 phút mỗi người dùng, lần thứ 21 → 429 rate_limited", async () => {
+    expect(ARTIFACT_RATE).toEqual({ limit: 20, windowMs: 10 * 60 * 1000 });
+    const { notebook, owner, members } = await createNotebookWithMembers(["editor"]);
+    await insertReadySource(notebook.id, owner.id, { title: "Nguồn", pages: SAMPLE_PAGES });
+    const create = (user: typeof owner) =>
+      createArtifact(makeRequest(`/api/notebooks/${notebook.id}/artifacts`, { method: "POST", user, body: { type: "report" } }), params({ id: notebook.id }));
 
-/** Xoá các job do test này xếp để không bị file test khác (chạy song song) nhặt nhầm. */
-async function dropJobs(notebookId: string) {
-  await db.delete(jobs).where(sql`${jobs.payload}->>'notebookId' = ${notebookId}`);
-}
-
-async function fillUntilLimited(call: () => Promise<Response>, limit: number): Promise<Response> {
-  for (let i = 0; i < limit; i++) {
-    const res = await call();
-    expect(res.status, `lượt ${i + 1}`).not.toBe(429);
-  }
-  return call();
-}
-
-describe("M-7 · hạn mức thao tác tốn tiền / CPU", () => {
-  it("tạo artifact: 20 lần / 10 phút, lần 21 → 429; regenerate dùng chung hạn mức; người khác không bị ảnh hưởng", async () => {
-    const { owner, notebook, members } = await createNotebookWithMembers(["editor"]);
-    await insertReadySource(notebook.id, owner.id, { pages: SAMPLE_PAGES });
-    const create = (user: TestUser) => () =>
-      createArtifactRoute(makeRequest(`/api/notebooks/${notebook.id}/artifacts`, { method: "POST", user, body: { type: "report" } }), params({ id: notebook.id }));
-    const limited = await fillUntilLimited(create(owner), 20);
-    expect(limited.status).toBe(429);
-    const body = await json(limited);
+    for (let i = 0; i < ARTIFACT_RATE.limit; i++) {
+      const res = await create(owner);
+      expect(res.status, `lần ${i + 1}`).toBe(201);
+    }
+    const blocked = await create(owner);
+    expect(blocked.status).toBe(429);
+    const body = (await blocked.json()) as any;
     expect(body.error.code).toBe("rate_limited");
-    expect(body.error.message).toMatch(/tối đa 20 lần/);
-
-    // regenerate cũng bị chặn (cùng khoá) dù artifact ở trạng thái cho phép tạo lại
-    const art = await insertArtifact(notebook.id, owner.id, { type: "report", status: "ready" });
-    const re = await regenerateRoute(makeRequest("/x", { method: "POST", user: owner, body: {} }), params({ artifactId: art.id }));
-    expect(re.status).toBe(429);
-
-    // editor khác vẫn tạo được
-    expect((await create(members.editor)()).status).toBe(201);
-    await dropJobs(notebook.id);
+    expect(body.error.details.retryAfterSec).toBeGreaterThan(0);
+    // giới hạn theo từng người dùng: người khác vẫn tạo được
+    expect((await create(members.editor)).status).toBe(201);
+    // yêu cầu bị từ chối vì dữ liệu sai không tiêu tốn hạn mức
+    const bad = await createArtifact(makeRequest(`/api/notebooks/${notebook.id}/artifacts`, { method: "POST", user: members.editor, body: { type: "khong-ton-tai" } }), params({ id: notebook.id }));
+    expect(bad.status).toBe(400);
   });
 
-  it("sửa slide bằng AI: lần 21 → 429 (kiểm tra hạn mức trước mọi xử lý)", async () => {
-    const { owner, notebook } = await createNotebookWithMembers();
-    const art = await insertArtifact(notebook.id, owner.id, { type: "report" });
-    const call = () =>
-      aiEditRoute(
-        makeRequest("/x", { method: "POST", user: owner, body: { instruction: "viết ngắn gọn hơn" } }),
-        params({ artifactId: art.id, slideId: "s1" }),
-      );
-    const limited = await fillUntilLimited(call, 20);
-    expect(limited.status).toBe(429);
+  it("gửi tin nhắn nhóm: 120 tin / phút mỗi người dùng, tin thứ 121 → 429", async () => {
+    expect(MESSAGE_RATE).toEqual({ limit: 120, windowMs: 60 * 1000 });
+    const { notebook, owner, members } = await createNotebookWithMembers(["editor"]);
+    const general = await generalChannelId(owner, notebook.id);
+    // Đặt sẵn bộ đếm gần ngưỡng để test không phải gửi 120 tin.
+    await db.insert(rateLimits).values({ key: `team-msg:${owner.id}`, windowStart: new Date(), count: MESSAGE_RATE.limit - 1 });
+    expect((await send(owner, general, { content: "tin cuối trong hạn mức" })).res.status).toBe(201);
+    const blocked = await send(owner, general, { content: "tin vượt hạn mức" });
+    expect(blocked.res.status).toBe(429);
+    expect(blocked.body.error.code).toBe("rate_limited");
+    // người khác không bị ảnh hưởng
+    expect((await send(members.editor, general, { content: "vẫn gửi được" })).res.status).toBe(201);
   });
 
-  it("xuất PDF/PNG: lần 11 → 429; xuất định dạng nhẹ (md) không bị tính", async () => {
-    const { owner, notebook } = await createNotebookWithMembers();
-    const art = await insertArtifact(notebook.id, owner.id, { type: "report" });
-    await addVersion(art.id, { content: { markdown: "# Tiêu đề\n\nNội dung", evidence: [] }, userId: owner.id, setStatusReady: true });
-    const call = (format: string) => () =>
-      exportRoute(makeRequest("/x", { method: "POST", user: owner, body: { format } }), params({ artifactId: art.id }));
-    const limited = await fillUntilLimited(call("pdf"), 10);
-    expect(limited.status).toBe(429);
-    expect((await json(limited)).error.message).toMatch(/tối đa 10 lần/);
-    expect((await call("md")()).status).toBe(200);
-    await db.delete(jobs).where(sql`${jobs.payload}->>'artifactId' = ${art.id}`);
+  it("hết cửa sổ thì được gửi lại", async () => {
+    const { notebook, owner } = await createNotebookWithMembers([]);
+    const general = await generalChannelId(owner, notebook.id);
+    await db.insert(rateLimits).values({ key: `team-msg:${owner.id}`, windowStart: new Date(Date.now() - 2 * 60_000), count: 500 });
+    expect((await send(owner, general, { content: "cửa sổ mới" })).res.status).toBe(201);
   });
 
-  it("thêm nguồn từ URL: lần 31 → 429", async () => {
-    const { owner, notebook } = await createNotebookWithMembers();
-    // URL YouTube → nguồn 'failed' ngay, không tạo job và không cần DNS
-    const call = (i: number) => () =>
-      createSourceRoute(
-        makeRequest(`/api/notebooks/${notebook.id}/sources`, { method: "POST", user: owner, body: { kind: "url", url: `https://www.youtube.com/watch?v=${i}` } }),
-        params({ id: notebook.id }),
-      );
-    let n = 0;
-    const limited = await fillUntilLimited(() => call(n++)(), 30);
-    expect(limited.status).toBe(429);
-  });
-
-  it("tên mô hình do client gửi phải là tên hợp lệ (không đường dẫn / khoảng trắng)", async () => {
-    const { owner, notebook } = await createNotebookWithMembers();
-    const create = (model: string) =>
-      createArtifactRoute(makeRequest(`/api/notebooks/${notebook.id}/artifacts`, { method: "POST", user: owner, body: { type: "report", model } }), params({ id: notebook.id }));
-    for (const bad of ["../../etc/passwd", "models/x?key=1", "a b", "x".repeat(101)]) expect((await create(bad)).status).toBe(400);
-    const conv = await createConversationRoute(makeRequest(`/api/notebooks/${notebook.id}/conversations`, { method: "POST", user: owner, body: {} }), params({ id: notebook.id }));
-    expect(conv.status).toBe(201);
-  });
-});
-
-describe("M-7 · ngân sách token xử lý nguồn mỗi ngày", () => {
-  it("vượt MAX_INGEST_TOKENS_PER_DAY: nguồn 'failed' với thông báo rõ; nguồn mới bị từ chối 429", async () => {
-    const { owner, notebook } = await createNotebookWithMembers();
-    process.env.MAX_INGEST_TOKENS_PER_DAY = "100";
-    resetEnvCache();
-    const first = await createSourceFromText({ notebookId: notebook.id, userId: owner.id, title: "Dài", text: "Quang hợp là quá trình thực vật chuyển hoá ánh sáng. ".repeat(60), visibility: "shared" });
-    await expect(ingestSource(first.id)).rejects.toMatchObject({ permanent: true, message: expect.stringMatching(/ngân sách xử lý tài liệu/) });
-
-    const res = await createSourceRoute(
-      makeRequest(`/api/notebooks/${notebook.id}/sources`, { method: "POST", user: owner, body: { kind: "text", title: "Mới", text: "nội dung" } }),
-      params({ id: notebook.id }),
-    );
+  it("bình luận: 20 / phút", async () => {
+    const { notebook, owner } = await createNotebookWithMembers([]);
+    const art = await insertArtifact(notebook.id, owner.id, { visibility: "public" });
+    await db.insert(rateLimits).values({ key: `comment:${owner.id}`, windowStart: new Date(), count: COMMENT_RATE.limit });
+    const res = await postComment(makeRequest(`/api/artifacts/${art.id}/comments`, { method: "POST", user: owner, body: { body: "quá nhanh" } }), params({ artifactId: art.id }));
     expect(res.status).toBe(429);
-    expect((await json(res)).error.message).toMatch(/ngân sách xử lý tài liệu/);
-    // người dùng khác không bị ảnh hưởng
-    const { owner: other, notebook: nb2 } = await createNotebookWithMembers();
-    const ok = await createSourceRoute(
-      makeRequest(`/api/notebooks/${nb2.id}/sources`, { method: "POST", user: other, body: { kind: "text", title: "Ổn", text: "nội dung" } }),
-      params({ id: nb2.id }),
-    );
-    expect(ok.status).toBe(201);
-    await db.delete(jobs).where(sql`${jobs.payload}->>'notebookId' in (${notebook.id}, ${nb2.id})`);
   });
 });

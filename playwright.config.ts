@@ -17,6 +17,8 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
+  // Dev server biên dịch trang lần đầu (Turbopack) nên điều hướng đầu tiên có thể chậm.
+  expect: { timeout: 15_000 },
   reporter: [["list"]],
   outputDir: "test-results",
   use: {

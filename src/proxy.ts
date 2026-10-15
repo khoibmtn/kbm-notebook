@@ -10,7 +10,11 @@ const AUTH_PAGES = ["/login", "/register"];
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-
+  // Trang thử nghiệm (/dev/*) chỉ có ở môi trường dev: production trả 404 ngay cả khi chưa đăng nhập.
+  if (pathname === "/dev" || pathname.startsWith("/dev/")) {
+    if (process.env.NODE_ENV === "production") return NextResponse.rewrite(new URL("/__not-found", request.url), { status: 404 });
+    return NextResponse.next();
+  }
   const hasSession = Boolean(getSessionCookie(request));
 
   // Trang đăng nhập/đăng ký: KHÔNG chuyển hướng theo cookie (cookie cũ/hết hạn phía DB sẽ gây vòng lặp /login ⇄ /).
@@ -26,7 +30,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Chỉ áp dụng cho route trang của (app): /, /settings, /n/**. API (kiểm tra origin trong handleRoute — không đi qua
-  // proxy vì Next đệm body ở middleware, làm hỏng upload lớn), /invite, tệp tĩnh không đi qua proxy.
-  matcher: ["/", "/settings/:path*", "/n/:path*", "/login", "/register"],
+  // Chỉ áp dụng cho route trang của (app): /, /settings, /n/**, /explore, /search, /g/**, /dev/**.
+  // API (kiểm tra origin trong handleRoute — không đi qua proxy vì Next đệm body ở middleware, làm hỏng upload lớn),
+  // /invite, /a, /s, /p (trang công khai), tệp tĩnh không đi qua proxy.
+  matcher: ["/", "/settings/:path*", "/n/:path*", "/explore/:path*", "/search/:path*", "/g/:path*", "/dev/:path*", "/login", "/register"],
 };

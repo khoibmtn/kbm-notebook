@@ -1,0 +1,72 @@
+# KBM Notebook — PostgreSQL 16 + pgvector và ứng dụng. Xem docs/08-trien-khai.md.
+#
+#   cp .env.example .env   # đặt POSTGRES_PASSWORD, BETTER_AUTH_SECRET, APP_ENCRYPTION_KEY, URL công khai…
+#   docker compose up -d --build
+#
+# Lưu ý: tệp này CHƯA được chạy thử trong môi trường phát triển (không có Docker daemon); xem mục "Kiểm chứng" của docs/08.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kbm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-kbm_notebook}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Không công bố cổng ra ngoài; bỏ chú thích nếu cần kết nối từ máy chủ (chỉ loopback).
+    # ports: ["127.0.0.1:5432:5432"]
+
+  app:
+    build:
+      context: .
+      args:
+        WITH_LIBREOFFICE: ${WITH_LIBREOFFICE:-false}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-kbm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-kbm_notebook}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?đặt BETTER_AUTH_SECRET trong .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?đặt BETTER_AUTH_URL (URL công khai) trong .env}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?đặt NEXT_PUBLIC_APP_URL trong .env}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?đặt APP_ENCRYPTION_KEY trong .env}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-}
+      GEMINI_ARTIFACT_MODEL: ${GEMINI_ARTIFACT_MODEL:-}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      CONNECTORS_ALLOW_PRIVATE_HOSTS: ${CONNECTORS_ALLOW_PRIVATE_HOSTS:-false}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      MAX_NOTEBOOK_STORAGE_MB: ${MAX_NOTEBOOK_STORAGE_MB:-}
+      MAX_UPLOAD_REQUEST_MB: ${MAX_UPLOAD_REQUEST_MB:-}
+      UPLOAD_MAX_FILES_PER_10MIN: ${UPLOAD_MAX_FILES_PER_10MIN:-}
+      UPLOAD_MAX_MB_PER_HOUR: ${UPLOAD_MAX_MB_PER_HOUR:-}
+      MAX_INGEST_TOKENS_PER_DAY: ${MAX_INGEST_TOKENS_PER_DAY:-}
+      INGEST_EXTRACT_TIMEOUT_SEC: ${INGEST_EXTRACT_TIMEOUT_SEC:-}
+      INGEST_EXTRACT_MAX_MB: ${INGEST_EXTRACT_MAX_MB:-}
+      AUTH_REQUIRE_EMAIL_VERIFICATION: ${AUTH_REQUIRE_EMAIL_VERIFICATION:-}
+      SMTP_URL: ${SMTP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      PORT: 3000
+    volumes:
+      - storage:/data/storage
+    # Chỉ công bố trên loopback; đặt reverse proxy (nginx/Caddy, xem docs/08) phía trước để có HTTPS + WebSocket `/rt`.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    # Chromium (xuất PDF) cần bộ nhớ chia sẻ lớn hơn mặc định.
+    shm_size: "1gb"
+
+volumes:
+  pgdata:
+  storage:

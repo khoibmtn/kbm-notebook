@@ -1,5 +1,5 @@
 {
-  "id": "db6faa20-6acb-4263-93db-b264f28c4d97",
+  "id": "3774bdb2-9399-42dd-9fd1-5b537b8ecb76",
   "prevId": "26657ca9-fe2a-4950-a965-a4cfede43f5e",
   "version": "7",
   "dialect": "postgresql",
@@ -340,89 +340,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.artifact_files": {
-      "name": "artifact_files",
-      "schema": "",
-      "columns": {
-        "artifact_id": {
-          "name": "artifact_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "artifact_files_file_idx": {
-          "name": "artifact_files_file_idx",
-          "columns": [
-            {
-              "expression": "file_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "artifact_files_artifact_id_artifacts_id_fk": {
-          "name": "artifact_files_artifact_id_artifacts_id_fk",
-          "tableFrom": "artifact_files",
-          "tableTo": "artifacts",
-          "columnsFrom": [
-            "artifact_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "artifact_files_file_id_files_id_fk": {
-          "name": "artifact_files_file_id_files_id_fk",
-          "tableFrom": "artifact_files",
-          "tableTo": "files",
-          "columnsFrom": [
-            "file_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "artifact_files_artifact_id_file_id_pk": {
-          "name": "artifact_files_artifact_id_file_id_pk",
-          "columns": [
-            "artifact_id",
-            "file_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.artifact_likes": {
       "name": "artifact_likes",
       "schema": "",
@@ -662,6 +579,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "artifact_versions_md_gin": {
+          "name": "artifact_versions_md_gin",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', coalesce(\"content_md\", ''))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -768,13 +700,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "contains_private_sources": {
-          "name": "contains_private_sources",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "generation_config": {
           "name": "generation_config",
           "type": "jsonb",
@@ -820,6 +745,37 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "artifacts_title_trgm": {
+          "name": "artifacts_title_trgm",
+          "columns": [
+            {
+              "expression": "\"title\" gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "artifacts_public_idx": {
+          "name": "artifacts_public_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"artifacts\".\"visibility\" = 'public' and \"artifacts\".\"deleted_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1434,18 +1390,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "notebook_id": {
-          "name": "notebook_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1469,42 +1413,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "files_notebook_idx": {
-          "name": "files_notebook_idx",
-          "columns": [
-            {
-              "expression": "notebook_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "files_origin_created_idx": {
-          "name": "files_origin_created_idx",
-          "columns": [
-            {
-              "expression": "origin",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1519,19 +1427,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "files_notebook_id_notebooks_id_fk": {
-          "name": "files_notebook_id_notebooks_id_fk",
-          "tableFrom": "files",
-          "tableTo": "notebooks",
-          "columnsFrom": [
-            "notebook_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1742,7 +1637,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "groups_name_trgm": {
+          "name": "groups_name_trgm",
+          "columns": [
+            {
+              "expression": "\"name\" gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "groups_owner_id_users_id_fk": {
           "name": "groups_owner_id_users_id_fk",
@@ -2117,12 +2028,6 @@
           "notNull": true,
           "default": false
         },
-        "insufficient_reason": {
-          "name": "insufficient_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "scope": {
           "name": "scope",
           "type": "jsonb",
@@ -2457,6 +2362,155 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.notebook_join_requests": {
+      "name": "notebook_join_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "notebook_id": {
+          "name": "notebook_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "join_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "notebook_join_requests_notebook_idx": {
+          "name": "notebook_join_requests_notebook_idx",
+          "columns": [
+            {
+              "expression": "notebook_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notebook_join_requests_pending_uq": {
+          "name": "notebook_join_requests_pending_uq",
+          "columns": [
+            {
+              "expression": "notebook_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"notebook_join_requests\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "notebook_join_requests_notebook_id_notebooks_id_fk": {
+          "name": "notebook_join_requests_notebook_id_notebooks_id_fk",
+          "tableFrom": "notebook_join_requests",
+          "tableTo": "notebooks",
+          "columnsFrom": [
+            "notebook_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "notebook_join_requests_user_id_users_id_fk": {
+          "name": "notebook_join_requests_user_id_users_id_fk",
+          "tableFrom": "notebook_join_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "notebook_join_requests_decided_by_users_id_fk": {
+          "name": "notebook_join_requests_decided_by_users_id_fk",
+          "tableFrom": "notebook_join_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2833,6 +2887,36 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "notes_search_gin": {
+          "name": "notes_search_gin",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', \"title\" || ' ' || \"content_md\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "notes_title_trgm": {
+          "name": "notes_title_trgm",
+          "columns": [
+            {
+              "expression": "\"title\" gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },
@@ -4234,6 +4318,15 @@
         "running",
         "done",
         "failed"
+      ]
+    },
+    "public.join_request_status": {
+      "name": "join_request_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "accepted",
+        "rejected"
       ]
     },
     "public.member_role": {
