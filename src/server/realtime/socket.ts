@@ -1,13 +1,15 @@
 import "server-only";
 import type { Server as HttpServer } from "node:http";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Server, type Socket } from "socket.io";
 import { getSession } from "@/server/auth/session";
 import { getNotebookRole } from "@/server/auth/permissions";
 import { RT_NAMESPACE, rooms, setIo } from "@/server/chat/realtime";
 import { db } from "@/server/db";
-import { channelMembers, channels } from "@/server/db/schema";
-import { isUuid } from "@/server/api/errors";
+import { channelMembers, channels, notebooks } from "@/server/db/schema";
+import { ApiError, isUuid } from "@/server/api/errors";
+import { requireChannelAccess } from "@/server/team-chat/access";
+import { markChannelRead } from "@/server/team-chat/actions";
 
 type Ack = (res: { ok: boolean; error?: string }) => void;
 
@@ -34,6 +36,7 @@ export function attachSocketServer(httpServer: HttpServer): Server {
       const session = await getSession(new Headers({ cookie }));
       if (!session) return next(new Error("unauthorized"));
       socket.data.userId = session.user.id;
+      socket.data.userName = session.user.name;
       next();
     } catch {
       next(new Error("unauthorized"));
@@ -42,7 +45,48 @@ export function attachSocketServer(httpServer: HttpServer): Server {
 
   rt.on("connection", (socket: Socket) => {
     const userId = socket.data.userId as string;
+    const userName = (socket.data.userName as string | undefined) ?? "";
     void socket.join(rooms.user(userId));
+
+    // Vào sẵn mọi phòng kênh của user (để nhận tin mới/badge chưa đọc dù chưa mở trang chat).
+    // Đồng bộ phòng khi tạo/xoá kênh được xử lý ở server/chat/realtime (joinUserToChannel, removeUserFromRooms).
+    void (async () => {
+      try {
+        const rows = await db
+          .select({ id: channels.id })
+          .from(channelMembers)
+          .innerJoin(channels, eq(channels.id, channelMembers.channelId))
+          .innerJoin(notebooks, eq(notebooks.id, channels.notebookId))
+          .where(and(eq(channelMembers.userId, userId), isNull(notebooks.deletedAt)));
+        await socket.join(rows.map((r) => rooms.channel(r.id)));
+      } catch (err) {
+        console.error("[rt] auto-join channels failed", err);
+      }
+    })();
+
+    // typing: chỉ phát cho kênh mà socket đã vào phòng (đã kiểm tra thành viên), giới hạn 1 lần/1.5s mỗi kênh.
+    const lastTyping = new Map<string, number>();
+    socket.on("typing", (payload: { channelId?: string }) => {
+      const id = payload?.channelId;
+      if (!id || !isUuid(id) || !socket.rooms.has(rooms.channel(id))) return;
+      const now = Date.now();
+      if (now - (lastTyping.get(id) ?? 0) < 1500) return;
+      lastTyping.set(id, now);
+      socket.to(rooms.channel(id)).emit("typing", { channelId: id, userId, name: userName });
+    });
+
+    // read: cập nhật mốc đã đọc rồi phát `read` tới kênh (markChannelRead tự phát).
+    socket.on("read", async (payload: { channelId?: string; messageId?: string }, ack?: Ack) => {
+      const id = payload?.channelId;
+      if (!id || !isUuid(id)) return reply(ack, { ok: false, error: "invalid_channel" });
+      try {
+        const access = await requireChannelAccess(userId, id);
+        await markChannelRead(access, userId, payload.messageId && isUuid(payload.messageId) ? payload.messageId : null);
+        reply(ack, { ok: true });
+      } catch (err) {
+        reply(ack, { ok: false, error: err instanceof ApiError && err.status === 404 ? "forbidden" : "error" });
+      }
+    });
 
     socket.on("join:notebook", async (payload: { notebookId?: string }, ack?: Ack) => {
       const id = payload?.notebookId;

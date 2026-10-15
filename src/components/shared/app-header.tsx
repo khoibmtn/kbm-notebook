@@ -1,5 +1,6 @@
 import { BookOpenText } from "lucide-react";
 import Link from "next/link";
+import { NotificationBell } from "@/components/shared/notification-bell";
 import { UserMenu, type MenuUser } from "@/components/shared/user-menu";
 import { getT } from "@/i18n/server";
 
@@ -14,7 +15,10 @@ export async function AppHeader({ user }: { user: MenuUser }) {
         </span>
         <span className="hidden sm:inline">{t("app.name")}</span>
       </Link>
-      <UserMenu user={user} />
+      <div className="flex items-center gap-1">
+        <NotificationBell />
+        <UserMenu user={user} />
+      </div>
     </header>
   );
 }

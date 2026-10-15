@@ -20,6 +20,7 @@ import { useStoredFlag } from "@/lib/use-stored-flag";
 import { MembersDialog } from "@/components/notebook/members-panel";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { NotebookTitle } from "@/components/notebook/notebook-title";
+import { NotificationBell } from "@/components/shared/notification-bell";
 import { UserMenu } from "@/components/shared/user-menu";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -27,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useT } from "@/lib/i18n-client";
 import type { MessageKey } from "@/lib/i18n";
 import { useRealtime } from "@/lib/realtime";
+import { useTeamUnread } from "@/lib/use-team-unread";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: MessageKey; icon: typeof FolderOpen; exact?: boolean };
@@ -49,7 +51,8 @@ const COLLAPSE_KEY = "kbm:sidebar-collapsed";
 function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const t = useT();
   const pathname = usePathname();
-  const { notebook } = useNotebook();
+  const { notebook, user } = useNotebook();
+  const teamUnread = useTeamUnread(notebook.id, user.id);
   return (
     <nav aria-label={t("nav.notebookNav")} className="flex flex-col gap-1 p-2">
       {navItems(notebook.id).map((item) => {
@@ -65,8 +68,22 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
               collapsed && "justify-center px-0",
             )}
           >
-            <item.icon className="size-4 shrink-0" />
+            <span className="relative flex shrink-0">
+              <item.icon className="size-4" />
+              {item.href.endsWith("/team") && teamUnread > 0 && collapsed && (
+                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive" aria-hidden />
+              )}
+            </span>
             {!collapsed && <span className="truncate">{t(item.label)}</span>}
+            {!collapsed && item.href.endsWith("/team") && teamUnread > 0 && (
+              <span
+                data-testid="team-unread-badge"
+                className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground"
+                aria-label={t("team.unreadAria", { count: teamUnread })}
+              >
+                {teamUnread > 99 ? "99+" : teamUnread}
+              </span>
+            )}
           </Link>
         );
         if (!collapsed) return <div key={item.href}>{link}</div>;
@@ -114,6 +131,7 @@ export function NotebookShell({ children }: { children: ReactNode }) {
         <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
           <Users /> <span className="hidden sm:inline">{t("notebook.share")}</span>
         </Button>
+        <NotificationBell />
         <UserMenu user={user} />
       </header>
 

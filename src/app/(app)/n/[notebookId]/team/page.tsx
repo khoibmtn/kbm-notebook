@@ -1,15 +1,10 @@
-import { UsersRound } from "lucide-react";
-import { EmptyState } from "@/components/shared/empty-state";
-import { getT } from "@/i18n/server";
+import { Suspense } from "react";
+import { TeamChat } from "@/components/team-chat/team-chat";
 
-export default async function TeamPage() {
-  const t = await getT();
+export default function TeamPage() {
   return (
-    <EmptyState
-      icon={UsersRound}
-      title={t("team.empty.title")}
-      description={t("team.empty.description")}
-      badge={t("module.comingSoon")}
-    />
+    <Suspense fallback={null}>
+      <TeamChat />
+    </Suspense>
   );
 }
