@@ -149,3 +149,26 @@ Các điểm dưới đây phản ánh code thật sau P0; phase sau dựa vào 
 **i18n & test**
 - Từ điển phẳng khoá dạng `"nhóm.khoá"` (`src/i18n/vi.ts` là nguồn kiểu `MessageKey`; `en.ts` bắt buộc đủ khoá). `t()` ở `src/lib/i18n.ts`, `useT()` ở `src/lib/i18n-client.tsx`, `getT()` (server) ở `src/i18n/server.ts`; locale lưu cookie `kbm_locale`.
 - Test: `tests/unit`, `tests/api` (gọi route handler trực tiếp với session thật của better-auth, DB `kbm_notebook_test` được tạo lại + migrate trong `tests/setup/global-setup.ts`), `tests/components` (jsdom), `tests/e2e` (Playwright, tự bật `pnpm dev` ở cổng `E2E_PORT`, mặc định 3200).
+
+## 7. Ghi chú triển khai P1 (Sources)
+
+**API** (`src/app/api/notebooks/[id]/…`, JSON camelCase, lỗi `{ error: { code, message } }`)
+- `GET sources` (viewer+; chỉ nguồn shared + nguồn private của chính người gọi), `POST sources` (editor+; `{kind:'url',url}` | `{kind:'text',title,text}`, tuỳ chọn `visibility`), `POST sources/upload` (multipart, trường `files`, nhiều tệp; 413 `payload_too_large`, 415 `unsupported_type`), `GET/PATCH/DELETE sources/[sourceId]` (PATCH/DELETE: chủ nguồn hoặc admin+, nguồn private của người khác → 404), `POST sources/[sourceId]/reprocess` (202; chỉ khi `ready`/`failed`, 409 nếu đang xử lý), `POST search` (`{query, sourceIds?, topK?}` → `{ evidence }`).
+- Link YouTube tạo nguồn `kind='youtube'` ở trạng thái `failed` ("Nguồn YouTube chưa hỗ trợ"), không xếp job. URL nội bộ/loopback bị từ chối ngay (400 `blocked_url`).
+
+**Pipeline ingest** (`src/server/knowledge/ingest/`, job `ingest_source`, handler đăng ký trong `server.ts` qua `registerIngestHandler()`)
+- `extract.ts` → `Segment[]` (`text`, `page` | `slide`, `section`); `chunk.ts` ghép thành toàn văn + `spans` rồi cắt chunk ≈800 token / chồng lấn 120 (ranh giới câu, không vượt ranh giới trang/slide; các mục không có trang như DOCX/MD được gộp nếu vừa); `embed.ts` batch 32 + retry; `summarize.ts` (AI với JSON schema, lỗi/đầu ra sai → tóm tắt trích xuất từ chính văn bản, `metadata.summaryBy`).
+- Toàn văn lưu ở `sources.raw_text`; bản đồ vị trí ở `sources.metadata.spans` (`[{start,end,page?,slide?,section?}]`), đơn vị trang ở `metadata.unit` (`page|slide|sheet`), tiến độ ở `metadata.progress`. `source_chunks.page` lưu số trang **hoặc** số slide **hoặc** thứ tự sheet (xem `unit`); `start_char/end_char` tính theo `raw_text`.
+- Lỗi vĩnh viễn (`IngestError`: PDF scan "cần OCR", tệp hỏng, URL nội bộ…) → `failed` ngay, job không retry; lỗi tạm (mạng, AI quá tải) → để worker retry theo backoff, nguồn giữ `processing` kèm ghi chú; hết lượt → `failed`. Thiếu khoá AI → `failed` với thông báo cấu hình.
+- Realtime `source:status` (`SourceStatusEvent` ở `src/lib/sources.ts`): nguồn shared phát tới `notebook:{id}`, nguồn private chỉ tới `user:{createdBy}`; `change` = `status|created|updated|deleted` (client tải lại danh sách với các giá trị khác `status`).
+- SSRF (`ssrf.ts`): chỉ http/https, chặn IP riêng/loopback/link-local/metadata (cả IPv6, v4-mapped), kiểm tra lại ở mỗi lần redirect **và** ở bước kết nối (`lookup` tuỳ biến, chống DNS rebinding); timeout 15s, tối đa 10MB, tự giải nén gzip/br. Không dùng `HTTP(S)_PROXY` của môi trường.
+
+**Retrieval cho P2/P3**
+- `retrieve(q, providers?)` (`src/server/knowledge/retrieve.ts`) → `Evidence[]` đã sắp giảm dần; `LocalKnowledgeProvider` (`providers/local.ts`): top 30 cosine (`<=>`) + top 30 full-text (`websearch_to_tsquery('simple', …)`, câu hỏi được chuyển thành các từ khoá nối bằng `or` vì mặc định là AND) → RRF (k=60, `rrf.ts`) → `topK` (mặc định 12). Chỉ tìm trong nguồn `ready`, chưa xoá, shared hoặc private của `userId`; `sourceIds` rỗng → không có kết quả.
+- `Evidence.score` là điểm RRF (≈0,016–0,033; chỉ so sánh trong cùng một truy vấn). Để đặt ngưỡng "thiếu bằng chứng" dùng `Evidence.similarity` (cosine 0–1, chỉ có khi chunk nằm trong top vector). `locator.slide` thay cho `page` với nguồn PPTX; sheet XLSX/CSV dùng `page` = thứ tự sheet + `section` = tên sheet.
+- `buildContext(evidence, { tokenBudget = 24000 })` (`src/server/ai/context.ts`) đánh số `[1..n]`, cắt theo ngân sách (≈ký tự/4), trả `{ evidence, contextText }` (chỉ các `[n]` trong `evidence` trả về là hợp lệ khi hậu kiểm).
+- Embedding của tài liệu dùng provider của **người tạo nguồn**, của câu hỏi dùng provider của **người hỏi**: nếu hai bên dùng model embedding khác nhau thì kết quả vector không còn đáng tin (mặc định cùng `gemini-embedding-001`/768 chiều).
+
+**UI** (`src/components/sources/`)
+- `SourcesPanel` cắm vào cột trái `NotebookWorkspace` và trang `/n/[id]/sources`; `SourceViewer`/`SourceViewerSheet` (route `/n/[id]/sources/[sourceId]?chunk=…|page=&start=&end=`). Helper `sourceViewerHref(notebookId, evidence)` và `parseViewerHighlight` ở `src/lib/sources.ts`.
+- Lựa chọn nguồn: `useSourceSelection(notebookId)` / `getSelectedSourceIds(notebookId)` (`src/lib/use-source-selection.ts`, localStorage `kbm:sources:selected:<notebookId>`). Lần đầu mở sổ tay chọn sẵn mọi nguồn `ready`; nguồn vừa thêm được tự chọn; chỉ nguồn `ready` mới chọn được.
