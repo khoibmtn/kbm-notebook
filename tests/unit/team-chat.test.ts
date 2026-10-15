@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isValidReactionEmoji, COMMON_EMOJI } from "@/lib/team-chat/emoji";
 import { formatBytes, isInlineImage, dayLabel } from "@/lib/team-chat/format";
 import { dayKey, groupMessages, upsertMessage, GROUP_GAP_MS } from "@/lib/team-chat/grouping";
-import { parseInline, parseMarkdownLite } from "@/lib/team-chat/markdown";
+import { parseInline, parseMarkdownLite, toPlainPreview } from "@/lib/team-chat/markdown";
 import {
   decodeMentions,
   detectMentionQuery,
@@ -168,6 +168,17 @@ describe("markdown-lite", () => {
     expect(blocks.map((b) => b.type)).toEqual(["paragraph", "quote", "codeblock", "paragraph"]);
     expect(blocks[0]).toMatchObject({ children: [{ type: "text", text: "dòng 1" }, { type: "br" }, { type: "text", text: "dòng 2" }] });
     expect(blocks[2]).toEqual({ type: "codeblock", text: "code **không đậm**" });
+  });
+});
+
+describe("toPlainPreview", () => {
+  it("bỏ markup, thay mention bằng @Tên, gộp xuống dòng và cắt ngắn có dấu …", () => {
+    expect(toPlainPreview(`**Họp** lúc *9h* với @[An](${A})\n> trích dẫn\n\`mã\` ~~huỷ~~ https://example.com`)).toBe("Họp lúc 9h với @An trích dẫn mã huỷ https://example.com");
+    expect(toPlainPreview("```\nconst x = 1;\n```")).toBe("const x = 1;");
+    const long = toPlainPreview("a".repeat(300), 20);
+    expect(long).toHaveLength(20);
+    expect(long.endsWith("…")).toBe(true);
+    expect(toPlainPreview("   ")).toBe("");
   });
 });
 

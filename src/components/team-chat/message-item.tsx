@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { memo } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { initials } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -177,9 +179,12 @@ function MessageItemImpl({
           {!selectMode && !recalled && (
             <div
               className={cn(
-                "absolute -top-4 z-10 flex gap-0.5 rounded-lg border bg-popover p-0.5 shadow-sm",
+                "absolute z-10 flex gap-0.5 rounded-lg border bg-popover p-0.5 shadow-sm",
                 "opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 [@media(hover:none)]:opacity-100",
-                own ? "right-2" : "left-2",
+                // Màn hình nhỏ: nổi ở mép trên bong bóng; từ md: nằm cạnh bong bóng, không che tên người gửi.
+                "-top-4",
+                own ? "right-2 md:right-full md:mr-1" : "left-2 md:left-full md:ml-1",
+                "md:top-1/2 md:-translate-y-1/2",
               )}
               data-testid="message-toolbar"
             >
@@ -286,9 +291,10 @@ function MessageItemImpl({
         {readers.length > 0 && (
           <div className="mt-0.5 flex items-center gap-0.5" data-testid="read-receipts" aria-label={t("team.msg.seenBy", { names: readers.map((r) => r.name).join(", ") })}>
             {readers.slice(0, 5).map((r) => (
-              <span key={r.userId} title={r.name}>
-                <UserAvatar name={r.name} image={r.image} className="size-4 text-[8px]" />
-              </span>
+              <Avatar key={r.userId} className="size-4" title={r.name}>
+                {r.image ? <AvatarImage src={r.image} alt={r.name} /> : null}
+                <AvatarFallback className="bg-primary/10 text-[7px] font-medium leading-none text-primary">{initials(r.name)}</AvatarFallback>
+              </Avatar>
             ))}
             {readers.length > 5 && <span className="ml-0.5 text-[10px] text-muted-foreground">+{readers.length - 5}</span>}
           </div>

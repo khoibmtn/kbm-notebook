@@ -12,7 +12,7 @@ import {
   users,
   type TeamMessageContentJson,
 } from "@/server/db/schema";
-import { plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type {
   AttachmentDTO,
   MessageDTO,
@@ -32,8 +32,8 @@ function iso(d: Date): string {
 }
 
 function snippetOf(row: TeamMessageRow, attachments: AttachmentDTO[], refs: RefDTO[]): string {
-  const text = plainText(row.content).replace(/\s+/g, " ").trim();
-  if (text) return text.slice(0, SNIPPET_LEN);
+  const text = toPlainPreview(row.content, SNIPPET_LEN);
+  if (text) return text;
   if (refs[0]) return refs[0].title.slice(0, SNIPPET_LEN);
   if (attachments[0]) return `📎 ${attachments[0].name}`.slice(0, SNIPPET_LEN);
   return "";

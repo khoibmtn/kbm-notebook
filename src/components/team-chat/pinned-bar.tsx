@@ -3,7 +3,7 @@ import { Pin, PinOff } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-client";
-import { plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type { MessageDTO } from "@/lib/team-chat/types";
 
 /** Thanh ghim trên đầu khung chat: bấm để nhảy tới tin ghim (lần lượt từng tin), bỏ ghim nếu có quyền. */
@@ -23,7 +23,7 @@ export function PinnedBar({
   if (pinned.length === 0) return null;
   const current = pinned[Math.min(cursor, pinned.length - 1)];
   const text =
-    plainText(current.content).replace(/\s+/g, " ").trim() ||
+    toPlainPreview(current.content) ||
     current.refs[0]?.title ||
     (current.attachments[0] ? `📎 ${current.attachments[0].name}` : "");
 

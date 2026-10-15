@@ -149,3 +149,34 @@ Các điểm dưới đây phản ánh code thật sau P0; phase sau dựa vào 
 **i18n & test**
 - Từ điển phẳng khoá dạng `"nhóm.khoá"` (`src/i18n/vi.ts` là nguồn kiểu `MessageKey`; `en.ts` bắt buộc đủ khoá). `t()` ở `src/lib/i18n.ts`, `useT()` ở `src/lib/i18n-client.tsx`, `getT()` (server) ở `src/i18n/server.ts`; locale lưu cookie `kbm_locale`.
 - Test: `tests/unit`, `tests/api` (gọi route handler trực tiếp với session thật của better-auth, DB `kbm_notebook_test` được tạo lại + migrate trong `tests/setup/global-setup.ts`), `tests/components` (jsdom), `tests/e2e` (Playwright, tự bật `pnpm dev` ở cổng `E2E_PORT`, mặc định 3200).
+
+## 7. Ghi chú triển khai P4 — Chat nhóm
+
+Không đổi schema (dùng nguyên các bảng `channels`, `channel_members`, `team_messages`, `message_reactions`, `message_attachments`, `notifications`). Mã nguồn: `src/server/team-chat/*` (nghiệp vụ), `src/app/api/{channels,notifications,notebooks/[id]/channels,…}`, `src/components/team-chat/*`, kiểu/hàm thuần dùng chung ở `src/lib/team-chat/*`.
+
+**Quyền & riêng tư**
+- Mọi handler tin nhắn đi qua `requireChannelAccess(userId, channelId, minRole)` (`server/team-chat/access.ts`): phải là thành viên notebook (không → **404**); kênh `dm` bắt buộc có dòng `channel_members` (không → **404**, không lộ sự tồn tại); kênh `general`/`topic` mọi thành viên notebook đều vào được (dòng `channel_members` thiếu được tự tạo). Viewer chat được; ghim / chuyển tệp vào Nguồn / tạo note cần `editor`; xoá tin của người khác cần `admin`; sửa & thu hồi chỉ người gửi.
+- Danh sách kênh tự chữa: tạo lại `general` nếu thiếu và thêm mọi thành viên vào `general` + mọi chủ đề. `addMember` (P0) giờ cũng thêm người mới vào các kênh chủ đề; `removeMember` rút socket của người bị xoá khỏi phòng notebook/kênh.
+- Tin xoá mềm (`deleted_at`) ẩn với mọi người; tin **thu hồi** (`recalled_at`) vẫn trả về như một dấu nhưng `content=''`, tệp/reaction/ghim bị gỡ khỏi DB. Note và nguồn tạo từ DM luôn `private`.
+- Thẻ tham chiếu (`artifact_ref|source_ref|note_ref`) chỉ nhận mục đã chia sẻ trong cùng notebook (mục riêng tư → 400); khi đọc lại, mục bị xoá/chuyển riêng tư hiển thị `available:false`.
+
+**API** (JSON camelCase; lỗi chuẩn `{ error: { code, message } }`)
+| Phương thức · đường dẫn | Ghi chú |
+|---|---|
+| `GET/POST /api/notebooks/[id]/channels` | GET: kênh nhìn thấy + `unread`, `lastMessage`, `members` (DM); `?summary=1` → `{ unread }` (bỏ kênh tắt tiếng). POST `{type:'topic',name}` (editor+) hoặc `{type:'dm',userId}` (idempotent, khoá advisory theo cặp) |
+| `PATCH /api/notebooks/[id]/channels/[channelId]` | đổi tên chủ đề (admin+ hoặc người tạo) |
+| `POST …/channels/[channelId]/read` `{messageId}` · `POST …/mute` `{muted}` | mốc đọc chỉ tiến, không lùi; đọc kênh đánh dấu đã đọc thông báo `mention/dm` của kênh |
+| `GET/POST /api/channels/[channelId]/messages` | GET keyset mới nhất trước: `?before=<id>`, `?after=<id>`, `?around=<id>`, `limit` ≤ 100; trang đầu kèm `pinned[]` và `reads[]` (mốc `lastReadAt` của thành viên khác → dấu "đã xem"). POST `{kind, content, replyToId?, mentions?, refs?, attachmentFileIds?}` |
+| `GET /api/channels/[channelId]/messages/search?q=` · `GET /api/notebooks/[id]/messages/search?q=` | `tsv @@ plainto_tsquery('simple')` + `ILIKE`; chỉ trong kênh user thuộc về; bỏ tin thu hồi/xoá |
+| `PATCH/DELETE …/messages/[messageId]` · `POST …/recall` · `POST …/reactions` `{emoji}` · `POST …/pin` | sửa (đặt `edited_at`) · xoá mềm · thu hồi · toggle reaction · toggle ghim |
+| `POST /api/channels/[channelId]/upload` | multipart, trường `files` (≤ 10 tệp, theo `MAX_UPLOAD_MB`) → `{ files: [{ fileId, name, mime, size }] }`; sau đó POST tin nhắn với `attachmentFileIds` (chỉ nhận tệp của chính người gửi, chưa gắn tin nào). Quyền đọc tệp dùng luật `registerFileAccessRule` có sẵn từ P0 (thành viên kênh) |
+| `POST …/messages/[messageId]/to-source` | editor+: `sources(kind='chat_attachment', status='pending')` + `enqueue('ingest_source', { sourceId, notebookId, userId })`; gọi lại không nhân đôi (`existing:true`); nếu chưa có handler thì nguồn giữ `pending` |
+| `POST /api/notebooks/[id]/notes/from-messages` `{channelId?, messageIds[], title?, timeZone?}` | editor+: `notes(origin='team_chat', origin_ref={channelId,messageIds})`, `content_md` = `**Tên** (hh:mm): nội dung` theo thứ tự thời gian |
+| `GET /api/notifications?unread=1` · `POST /api/notifications/read` `{ids}\|{all:true}` | thông báo `mention` / `dm`, `link` = `/n/{id}/team?channel=…&message=…` |
+
+**Realtime** (namespace `/rt`): khi kết nối, socket tự vào mọi phòng `channel:{id}` của user (kể cả DM); `joinUserToChannel`/`joinNotebookToChannel`/`removeUserFromRooms` ở `server/chat/realtime.ts` đồng bộ phòng khi tạo kênh/xoá thành viên. Server phát `message:new|edit|delete|recall|reaction|pin` (payload luôn có `notebookId`, `channelId`), `channel:new` (kênh chủ đề → phòng notebook, DM → hai phòng `user:`), `channel:update`, `read`, `notification` (→ `user:{id}`). Client phát `typing {channelId}` (chỉ khi socket đã ở trong phòng; throttle 1.5s) và `read {channelId, messageId}` (có ack).
+
+**Thành phần dùng lại cho module khác**
+- `ShareToChatDialog` (`components/team-chat/share-to-chat-dialog.tsx`): `<ShareToChatDialog open onOpenChange notebookId item={{ type:'artifact'|'source'|'note', id, title }} />` — cần nằm trong `NotebookProvider`. Đường dẫn thẻ: artifact → `/n/[id]/artifacts/[artifactId]`, nguồn → `/n/[id]/sources?source=<id>`, note → `/n/[id]/notes?note=<id>` (module tương ứng có thể đọc query này để mở đúng mục).
+- `NotificationBell` (đã gắn ở thanh trên của sổ tay và dashboard), hook `useNotifications()` (`lib/use-notifications.ts`) và `useTeamUnread(notebookId, meId)` (`lib/use-team-unread.ts`).
+- `RefPickerDialog` đọc `GET /api/notebooks/[id]/{sources|artifacts|notes}` (chấp nhận `[...]` hoặc `{ sources: [...] }`); API chưa có (404) thì hiện "mô-đun chưa khả dụng".

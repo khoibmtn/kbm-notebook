@@ -19,7 +19,8 @@ import {
 import { enqueue } from "@/server/jobs/queue";
 import { getStorage } from "@/server/storage/local";
 import { hasRole } from "@/lib/roles";
-import { parseMentionIds, plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
+import { parseMentionIds } from "@/lib/team-chat/mentions";
 import type { AttachmentDTO, MessageDTO, ReactionDTO, RefType } from "@/lib/team-chat/types";
 import type { PostMessageInput } from "@/lib/validators/team-chat";
 import type { ChannelAccess } from "./access";
@@ -68,8 +69,8 @@ function resolveMentions(content: string, extra: string[] | undefined, allowed: 
 }
 
 function previewFor(content: string, attachments: { name: string }[], refTitle?: string): string {
-  const text = plainText(content).replace(/\s+/g, " ").trim();
-  if (text) return text.slice(0, 140);
+  const text = toPlainPreview(content);
+  if (text) return text;
   if (refTitle) return refTitle.slice(0, 140);
   if (attachments[0]) return `📎 ${attachments[0].name}`.slice(0, 140);
   return "";

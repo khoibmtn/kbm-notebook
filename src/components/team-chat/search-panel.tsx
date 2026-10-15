@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n-client";
-import { plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type { ChannelType, MessageDTO } from "@/lib/team-chat/types";
 import { cn } from "@/lib/utils";
 
@@ -146,7 +146,7 @@ export function SearchPanel({
                       </span>
                     )}
                     <span className="line-clamp-2 break-words text-sm text-muted-foreground">
-                      <Highlight text={plainText(r.content)} query={q} />
+                      <Highlight text={toPlainPreview(r.content, 400)} query={q} />
                     </span>
                   </span>
                 </button>

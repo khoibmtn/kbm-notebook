@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api, errorMessage } from "@/lib/api-client";
 import { useT } from "@/lib/i18n-client";
 import { useRealtime, useRealtimeEvent } from "@/lib/realtime";
-import { plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type {
   ChannelDTO,
   ChannelEvent,
@@ -162,7 +162,7 @@ export function TeamChat() {
                 senderId: m.sender.id,
                 senderName: m.sender.name,
                 kind: m.kind,
-                preview: plainText(m.content).replace(/\s+/g, " ").trim().slice(0, 140) || m.refs[0]?.title || (m.attachments[0] ? `📎 ${m.attachments[0].name}` : ""),
+                preview: toPlainPreview(m.content) || m.refs[0]?.title || (m.attachments[0] ? `📎 ${m.attachments[0].name}` : ""),
                 recalled: false,
                 createdAt: m.createdAt,
               },
@@ -182,7 +182,7 @@ export function TeamChat() {
                   lastMessage: {
                     ...c.lastMessage,
                     recalled: e.message.recalledAt != null,
-                    preview: e.message.recalledAt ? "" : plainText(e.message.content).replace(/\s+/g, " ").trim().slice(0, 140),
+                    preview: e.message.recalledAt ? "" : toPlainPreview(e.message.content),
                   },
                 }
               : c,

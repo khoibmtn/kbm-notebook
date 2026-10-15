@@ -5,7 +5,7 @@ import { emitToNotebook, emitToUser, joinNotebookToChannel, joinUserToChannel } 
 import { db } from "@/server/db";
 import { channelMembers, channels, notebookMembers, notebooks, users, type Role } from "@/server/db/schema";
 import { hasRole } from "@/lib/roles";
-import { plainText } from "@/lib/team-chat/mentions";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type { ChannelDTO, ChannelEvent, MessageKind, PersonDTO } from "@/lib/team-chat/types";
 import type { ChannelRow } from "./access";
 
@@ -80,8 +80,7 @@ async function unreadByChannel(userId: string, notebookId: string): Promise<Map<
 
 function previewOf(row: Pick<LastRow, "kind" | "content" | "recalled_at">): string {
   if (row.recalled_at) return "";
-  const text = plainText(row.content).replace(/\s+/g, " ").trim();
-  return text.slice(0, 140);
+  return toPlainPreview(row.content);
 }
 
 /** Danh sách kênh user nhìn thấy trong notebook, kèm chưa đọc, tin cuối, thành viên DM. */

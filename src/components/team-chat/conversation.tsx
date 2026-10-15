@@ -180,6 +180,11 @@ export function Conversation({ channel, meId, myRole, members, initialMessageId,
     return () => clearTimeout(h);
   }, [highlightId]);
 
+  // Màn hình rộng: đưa con trỏ vào ô soạn khi mở kênh (trên di động tránh bật bàn phím).
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) composerRef.current?.focus();
+  }, []);
+
   // Lần nạp đầu: tới liên kết / dải tin mới / cuối.
   useEffect(() => {
     if (data.status !== "ready" || initialized.current) return;
@@ -205,13 +210,14 @@ export function Conversation({ channel, meId, myRole, members, initialMessageId,
     if (bottom && data.hasNewer && !data.loadingNewer) void data.loadNewer();
   }, [data]);
 
-  // Nội dung chưa đủ cao để cuộn nhưng vẫn còn tin cũ → nạp tiếp.
+  // Đang ở sát đầu danh sách (hoặc nội dung chưa đủ cao để cuộn) mà vẫn còn tin cũ → nạp tiếp.
+  // Chạy sau mỗi lần render vì vị trí cuộn có thể ở 0 mà không có sự kiện scroll nào (vd. vừa nhảy tới dải tin mới).
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && data.status === "ready" && data.hasOlder && !data.loadingOlder && el.scrollHeight <= el.clientHeight + 40) {
-      void data.loadOlder();
-    }
-  }, [data, messages.length]);
+    if (!el || data.status !== "ready" || !data.hasOlder || data.loadingOlder) return;
+    if (!initialized.current || pendingScroll.current) return;
+    if (el.scrollTop < 160 || el.scrollHeight <= el.clientHeight + 40) void data.loadOlder();
+  });
 
   // Tin mới ở cuối: tự cuộn nếu đang ở đáy hoặc là tin của mình, ngược lại đếm "tin mới".
   const lastSeen = useRef<string | null>(null);

@@ -145,3 +145,34 @@ export function parseMarkdownLite(content: string): BlockNode[] {
   flushPara();
   return blocks;
 }
+
+function flattenInline(nodes: InlineNode[]): string {
+  return nodes
+    .map((n): string => {
+      switch (n.type) {
+        case "text":
+          return n.text;
+        case "br":
+          return " ";
+        case "code":
+          return n.text;
+        case "link":
+          return n.text;
+        case "mention":
+          return `@${n.name}`;
+        default:
+          return flattenInline(n.children);
+      }
+    })
+    .join("");
+}
+
+/** Văn bản thuần (bỏ markup, mention → @Tên, xuống dòng → khoảng trắng) cho xem trước / trích dẫn / thông báo. */
+export function toPlainPreview(content: string, maxLength = 140): string {
+  const text = parseMarkdownLite(content)
+    .map((b) => (b.type === "codeblock" ? b.text : flattenInline(b.children)))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}

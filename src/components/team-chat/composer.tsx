@@ -13,10 +13,10 @@ import {
   detectMentionQuery,
   encodeMentions,
   filterMentionCandidates,
-  plainText,
   type MentionRef,
 } from "@/lib/team-chat/mentions";
 import { formatBytes } from "@/lib/team-chat/format";
+import { toPlainPreview } from "@/lib/team-chat/markdown";
 import type { MessageDTO, PersonDTO, RefType } from "@/lib/team-chat/types";
 import { cn } from "@/lib/utils";
 import { EmojiPicker } from "./emoji-picker";
@@ -298,7 +298,7 @@ export function Composer({
     }
   }
 
-  const replyText = replyTo ? plainText(replyTo.content) || replyTo.attachments[0]?.name || replyTo.refs[0]?.title || "" : "";
+  const replyText = replyTo ? toPlainPreview(replyTo.content) || replyTo.attachments[0]?.name || replyTo.refs[0]?.title || "" : "";
 
   return (
     <div className="shrink-0 border-t bg-background px-3 pb-3 pt-2 sm:px-4" data-testid="composer">
@@ -309,7 +309,7 @@ export function Composer({
             <div className="font-medium text-primary">
               {editing ? t("team.composer.editing") : t("team.composer.replyingTo", { name: replyTo!.sender.name })}
             </div>
-            <div className="truncate text-muted-foreground">{editing ? plainText(editing.content) : replyText}</div>
+            <div className="truncate text-muted-foreground">{editing ? toPlainPreview(editing.content) : replyText}</div>
           </div>
           <Button
             variant="ghost"
