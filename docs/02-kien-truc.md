@@ -113,3 +113,39 @@ Socket.IO namespace `/rt`, auth bằng cookie session better-auth khi handshake.
 - Tệp tải lên: kiểm MIME + kích thước (mặc định 50MB), lưu ngoài `public`, phục vụ qua route có kiểm quyền; tên tệp sinh UUID.
 - Khoá API/credential mã hoá AES-256-GCM; không log.
 - Zod validate mọi input; lỗi chuẩn `{ error: { code, message } }`.
+
+## 6. Ghi chú triển khai P0 (khác biệt / bổ sung so với thiết kế)
+
+Các điểm dưới đây phản ánh code thật sau P0; phase sau dựa vào đây khi mở rộng.
+
+**Next 16 & môi trường**
+- Dùng `src/proxy.ts` (không còn `middleware.ts`): chỉ kiểm tra *có cookie session* để chuyển hướng về `/login?next=…`; xác thực thật nằm ở `(app)/layout.tsx` (`requirePageSession`) và `requireUser()` trong route handler.
+- `cacheComponents`/`partialPrefetching` của template mặc định **bị tắt** (app hoàn toàn động theo session; custom server).
+- shadcn CLI không chạy được trong môi trường build (registry `ui.shadcn.com` bị chặn) nên các component trong `src/components/ui/` được sao chép từ nguồn `new-york-v4` của repo shadcn-ui (cùng nội dung CLI sinh ra). Thêm component mới: copy tương tự hoặc chạy `pnpm dlx shadcn@latest add <name>` khi có mạng.
+- `server.ts` chạy bằng `tsx --tsconfig tsconfig.server.json` (dev) và bundle bằng `esbuild` → `dist/server.js` (prod, `--packages=external`). Package `server-only` được alias sang stub (`scripts/server-only-stub.ts`) ngoài Next. **Không** import `next/headers`/`next/navigation` tĩnh trong module mà `server.ts` nạp (vd. `session.ts` import lười `next/headers`; `requirePageSession` nằm riêng ở `auth/page-session.ts`).
+- Module nạp bởi `server.ts` (tsx) và module bundle bởi Next là **hai instance riêng trong cùng tiến trình**: chia sẻ trạng thái qua `globalThis` (Socket.IO `__kbmIo`, pool DB, worker). Handler job chỉ đăng ký ở instance của `server.ts` (nơi worker chạy); route handler chỉ `enqueue()`.
+
+**Auth**
+- better-auth dùng id `uuid` (`advanced.database.generateId = "uuid"`) khớp schema; bảng đặt tên số nhiều (`users, sessions, accounts, verifications`). Hook `user.create.after` tạo `user_profiles` + `user_settings`.
+- `getSession(headers?)` lấy headers theo thứ tự: tham số → `AsyncLocalStorage` do `handleRoute` đặt (cho phép test gọi thẳng route handler bằng `Request`) → `next/headers`. Socket.IO truyền `Headers({ cookie })` từ handshake.
+- Google: chỉ bật khi có `GOOGLE_CLIENT_ID/SECRET` (scope `openid email profile`, `accessType: offline`). Drive là scope *tuỳ chọn*: client gọi `connectGoogleDrive()` (`src/lib/auth-client.ts`) = `linkSocial({ provider: "google", scopes: [drive.readonly] })`; chưa có UI Drive.
+
+**Phân quyền**
+- `requireNotebookRole`: không phải thành viên / notebook đã xoá → **404** (không lộ sự tồn tại); là thành viên nhưng thiếu quyền → **403**. Logic thứ bậc vai trò dùng chung client/server ở `src/lib/roles.ts`.
+- Chấp nhận lời mời (`POST /api/invites/[token]/accept`) yêu cầu email tài khoản **trùng** email được mời (chưa có xác minh email nên token một mình chưa đủ). Lời mời hết hạn sau 7 ngày. Mời email đã có tài khoản → thêm thẳng vào `notebook_members` + `channel_members` của kênh `general`.
+- Chỉ owner được đặt `defaultArtifactVisibility = public`. Chủ sở hữu bất biến qua PATCH/DELETE member; đổi chủ qua `POST /api/notebooks/[id]/transfer` (owner cũ → admin).
+- Quy ước JSON của API là camelCase (`systemInstruction`, `allowWeb`, `defaultArtifactVisibility`, `coverColor`).
+
+**AI**
+- Thêm `AiProviderError` (key sai/hết quota… → 400/429/502, mã `ai_provider_error`) bên cạnh `AiNotConfiguredError` (412, mã `ai_not_configured`). `TextRequest.__mockJson` chỉ để test với `MockAiProvider`.
+- Model mặc định cấu hình qua env (`GEMINI_CHAT_MODEL`, `GEMINI_ARTIFACT_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_IMAGE_MODEL`) hoặc `user_settings`; mặc định dùng alias `gemini-flash-latest`/`gemini-pro-latest`/`gemini-embedding-001`. Embedding luôn chuẩn hoá L2 sau khi cắt `outputDimensionality` (768).
+- `KnowledgeProvider`/`Evidence` đã có kiểu ở `src/server/knowledge/providers/types.ts` (chưa có implementation).
+
+**Tệp & job & realtime**
+- `StorageAdapter.put(data, { ownerId, mime, name })` (cần `ownerId` vì `files.owner_id` bắt buộc); key lưu `YYYY/MM/<uuid>`; vượt `MAX_UPLOAD_MB` → 413 `payload_too_large`. `canAccessFile` chạy chuỗi *luật truy cập* — phase sau gọi `registerFileAccessRule()` (`src/server/storage/files.ts`) để thêm luật (vd. tệp đính kèm chat đã có sẵn). HTML/SVG luôn bị ép `attachment`.
+- Worker: handler đăng ký bằng `registerJobHandler(type, fn)`; chỉ nhận job có loại đã đăng ký; retry backoff 5s/20s/80s; job `running` quá 10 phút được đưa lại hàng đợi; tiến độ phát qua `job:progress` tới `notebook:{payload.notebookId}` / `user:{payload.userId}` nếu payload có các trường đó.
+- Socket.IO: namespace `/rt`, `destroyUpgrade: false` (để HMR của Next dev hoạt động). Ngoài `join:notebook` còn có `leave:notebook`, `join:channel` (kiểm tra `channel_members`), `leave:channel`.
+
+**i18n & test**
+- Từ điển phẳng khoá dạng `"nhóm.khoá"` (`src/i18n/vi.ts` là nguồn kiểu `MessageKey`; `en.ts` bắt buộc đủ khoá). `t()` ở `src/lib/i18n.ts`, `useT()` ở `src/lib/i18n-client.tsx`, `getT()` (server) ở `src/i18n/server.ts`; locale lưu cookie `kbm_locale`.
+- Test: `tests/unit`, `tests/api` (gọi route handler trực tiếp với session thật của better-auth, DB `kbm_notebook_test` được tạo lại + migrate trong `tests/setup/global-setup.ts`), `tests/components` (jsdom), `tests/e2e` (Playwright, tự bật `pnpm dev` ở cổng `E2E_PORT`, mặc định 3200).
