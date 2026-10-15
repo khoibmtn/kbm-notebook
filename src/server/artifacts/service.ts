@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
+import { enforceRateLimit } from "@/server/api/rate-limit";
 import { canViewArtifact, getNotebookRole, hasRole, type Role } from "@/server/auth/permissions";
 import { emitToNotebook, emitToUser } from "@/server/chat/realtime";
 import { randomToken } from "@/server/crypto";
@@ -347,6 +348,12 @@ async function notebookDefaultVisibility(notebookId: string): Promise<ArtifactVi
   return nb?.v ?? "notebook";
 }
 
+/** Giới hạn sinh artifact: 20 lần / 10 phút cho mỗi người dùng (tạo + tạo lại), 429 `rate_limited` khi vượt. */
+export const ARTIFACT_RATE = { limit: 20, windowMs: 10 * 60 * 1000 } as const;
+export async function enforceArtifactRateLimit(userId: string): Promise<void> {
+  await enforceRateLimit(`artifact:${userId}`, ARTIFACT_RATE.limit, ARTIFACT_RATE.windowMs, "Bạn tạo artifact quá nhanh. Thử lại sau khoảng {minutes} phút.");
+}
+
 /**
  * Tạo artifact `queued` + xếp job `generate_artifact`.
  * Ném 501 nếu loại phụ thuộc engine chưa có; 400 `no_sources` nếu phạm vi không có nguồn `ready`.
@@ -362,6 +369,7 @@ export async function createArtifact(params: {
   if (sourceIds.length === 0) {
     throw new ApiError(400, "no_sources", "Chưa có nguồn nào sẵn sàng trong phạm vi đã chọn. Hãy thêm hoặc chọn nguồn đã xử lý xong.");
   }
+  await enforceArtifactRateLimit(userId);
   const config: GenerationConfig = {
     customPrompt: input.customPrompt || undefined,
     options: input.options as Record<string, unknown> | undefined,
@@ -406,6 +414,7 @@ export async function regenerateArtifact(artifact: Artifact, userId: string, inp
   if (sourceIds.length === 0) {
     throw new ApiError(400, "no_sources", "Chưa có nguồn nào sẵn sàng trong phạm vi đã chọn.");
   }
+  await enforceArtifactRateLimit(userId);
   const [row] = await db
     .update(artifacts)
     .set({ status: "queued", error: null, generationConfig: next as Record<string, unknown>, updatedAt: new Date() })

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RoleBadge } from "@/components/dashboard/role-badge";
+import { JoinRequestsPanel } from "@/components/community/join-requests-panel";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -185,6 +186,8 @@ export function MembersPanel() {
           <p className="text-xs text-muted-foreground">{t("members.invite.hint")}</p>
         </form>
       )}
+
+      {canManage && <JoinRequestsPanel notebookId={notebook.id} onChanged={reload} />}
 
       <section aria-label={t("members.list")} className="space-y-2">
         <h3 className="text-sm font-medium">

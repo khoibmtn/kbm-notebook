@@ -14,7 +14,7 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /**
  * Trang chỉ đọc `/a/[artifactId]`: artifact công khai (không cần đăng nhập) hoặc được chia sẻ riêng cho người dùng
- * ngoài sổ tay. Thành viên sổ tay được chuyển sang trang artifact trong ứng dụng.
+ * ngoài sổ tay, kèm thích/bình luận. Thành viên sổ tay được chuyển sang trang artifact trong ứng dụng (trừ artifact công khai).
  */
 export default async function PublicArtifactPage({ params }: { params: Promise<{ artifactId: string }> }) {
   const { artifactId } = await params;
@@ -46,11 +46,14 @@ export default async function PublicArtifactPage({ params }: { params: Promise<{
     );
   }
   const member = session ? (await getNotebookRole(session.user.id, detail.notebookId)) !== null : false;
-  if (member) redirect(`/n/${detail.notebookId}/artifacts/${detail.id}`);
+  // Artifact công khai: thành viên cũng xem ở đây (có thích/bình luận); chia sẻ riêng: chuyển vào ứng dụng.
+  if (member && detail.visibility !== "public") redirect(`/n/${detail.notebookId}/artifacts/${detail.id}`);
   return (
     <SharedArtifactView
       artifact={{ id: detail.id, type: detail.type, title: detail.title, content: detail.content, createdByName: detail.createdByName, updatedAt: detail.updatedAt }}
       signedIn={Boolean(session)}
+      notebookId={member ? detail.notebookId : undefined}
+      social={{ meId: session?.user.id ?? null }}
     />
   );
 }

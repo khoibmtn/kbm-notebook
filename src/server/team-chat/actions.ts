@@ -1,6 +1,7 @@
 import "server-only";
 import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ApiError } from "@/server/api/errors";
+import { enforceRateLimit } from "@/server/api/rate-limit";
 import { canViewArtifact } from "@/server/auth/permissions";
 import { emitToChannel } from "@/server/chat/realtime";
 import { db } from "@/server/db";
@@ -135,6 +136,9 @@ async function validateRef(userId: string, notebookId: string, input: PostMessag
   return { type: "note", id: n.id, title: n.title };
 }
 
+/** Giới hạn gửi tin: 120 tin / phút cho mỗi người dùng (429 `rate_limited`). */
+export const MESSAGE_RATE = { limit: 120, windowMs: 60 * 1000 } as const;
+
 export async function createMessage(access: ChannelAccess, actor: Actor, input: PostMessageInput): Promise<MessageDTO> {
   const { channel } = access;
   const content = input.content.trim();
@@ -156,6 +160,7 @@ export async function createMessage(access: ChannelAccess, actor: Actor, input: 
   }
 
   if (!content && !ref && fileRows.length === 0) throw ApiError.badRequest("Tin nhắn trống", "empty_message");
+  await enforceRateLimit(`team-msg:${actor.id}`, MESSAGE_RATE.limit, MESSAGE_RATE.windowMs, "Bạn gửi tin nhắn quá nhanh. Thử lại sau ít giây.");
 
   let replyToId: string | null = null;
   if (input.replyToId) {

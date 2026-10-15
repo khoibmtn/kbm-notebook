@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ArtifactSocial } from "@/components/community/artifact-social";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { useShareToChat } from "@/components/team-chat/share-to-chat-provider";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +56,7 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
   const { locale } = useLocale();
   const router = useRouter();
   const search = useSearchParams();
-  const { notebook, role } = useNotebook();
+  const { notebook, role, user } = useNotebook();
   const { connected } = useRealtime();
   const { exportAs } = useArtifactExport();
   const shareToChat = useShareToChat();
@@ -521,6 +522,11 @@ export function ArtifactPage({ artifactId }: { artifactId: string }) {
               notebookId={notebook.id}
               handlers={slideHandlers}
             />
+            {artifact.visibility === "public" && artifact.status === "ready" && (
+              <div className="mx-auto mt-8 w-full max-w-3xl border-t pt-6">
+                <ArtifactSocial artifactId={artifact.id} meId={user.id} loginNext={`/n/${notebook.id}/artifacts/${artifact.id}`} />
+              </div>
+            )}
           </>
         ) : busy ? (
           <div className="mx-auto flex max-w-sm flex-1 flex-col items-center gap-3 py-16 text-center" role="status" data-testid="artifact-generating">

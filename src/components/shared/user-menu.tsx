@@ -1,5 +1,5 @@
 "use client";
-import { LogOut, Monitor, Moon, Settings, Sun, User } from "lucide-react";
+import { Compass, LogOut, Monitor, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -47,6 +47,16 @@ export function UserMenu({ user }: { user: MenuUser }) {
           <div className="truncate text-xs text-muted-foreground">{user.email}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/explore">
+            <Compass /> {t("nav.explore")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/search">
+            <Search /> {t("nav.search")}
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/settings?tab=profile">
             <User /> {t("nav.profile")}

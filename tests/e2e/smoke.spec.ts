@@ -21,7 +21,8 @@ test("đăng ký → tạo sổ tay → thấy trên dashboard → mở không g
   // Dashboard rỗng (không dữ liệu giả)
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Sổ tay của tôi" })).toBeVisible();
-  await expect(page.getByText("Bạn chưa có sổ tay nào")).toBeVisible();
+  await expect(page.getByTestId("onboarding")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bắt đầu với KBM Notebook" })).toBeVisible();
 
   // Tạo sổ tay
   await page.getByRole("button", { name: "Tạo sổ tay" }).first().click();

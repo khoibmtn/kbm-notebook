@@ -19,7 +19,7 @@ export function toNotificationDTO(n: typeof notifications.$inferSelect): Notific
   };
 }
 
-async function localesOf(userIds: string[]): Promise<Map<string, Locale>> {
+export async function localesOf(userIds: string[]): Promise<Map<string, Locale>> {
   const map = new Map<string, Locale>();
   if (userIds.length === 0) return map;
   const rows = await db
