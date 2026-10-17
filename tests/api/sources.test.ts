@@ -66,6 +66,26 @@ async function runIngestJobs(): Promise<string[]> {
   return outcomes;
 }
 
+/**
+ * Claim đúng job ingest_source của `sourceId`. Job của nguồn khác (kể cả job còn sót của file test khác trên cùng DB)
+ * được trả lại hàng đợi, không chạy — tránh vớ nhầm job khi file này chạy sau các file để lại job `queued`.
+ */
+async function claimIngestJobFor(sourceId: string) {
+  const foreign: string[] = [];
+  try {
+    for (;;) {
+      const job = await claimJob("test-worker", ["ingest_source"]);
+      if (!job) return null;
+      if ((job.payload as { sourceId?: string }).sourceId === sourceId) return job;
+      foreign.push(job.id);
+    }
+  } finally {
+    for (const id of foreign) {
+      await db.execute(sql`UPDATE jobs SET status = 'queued', attempts = GREATEST(attempts - 1, 0), locked_at = NULL, locked_by = NULL WHERE id = ${id} AND status = 'running'`);
+    }
+  }
+}
+
 function uploadReq(nb: string, user: TestUser | null, files: File[], extra: Record<string, string> = {}) {
   const form = new FormData();
   for (const f of files) form.append("files", f);
@@ -342,7 +362,8 @@ describe("lỗi khi xử lý", () => {
     try {
       const { body } = await doUpload(notebook.id, owner, [makeFile("Một đoạn văn bản bình thường để xử lý.", "t.txt", "text/plain")]);
       const id = body.sources[0].id;
-      const job1 = (await claimJob("w", ["ingest_source"]))!;
+      const job1 = (await claimIngestJobFor(id))!;
+      expect(job1).toBeTruthy();
       expect(await runJob(job1)).toBe("retry");
       const [mid] = await db.select().from(sources).where(eq(sources.id, id));
       expect(mid.status).toBe("processing");
@@ -350,7 +371,8 @@ describe("lỗi khi xử lý", () => {
 
       // lượt cuối
       await db.update(jobs).set({ runAt: new Date(), attempts: 2 }).where(eq(jobs.id, job1.id));
-      const last = (await claimJob("w", ["ingest_source"]))!;
+      const last = (await claimIngestJobFor(id))!;
+      expect(last).toBeTruthy();
       expect(last.attempts).toBe(3);
       expect(await runJob(last)).toBe("failed");
       const [fin] = await db.select().from(sources).where(eq(sources.id, id));

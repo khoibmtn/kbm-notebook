@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import JSZip from "jszip";
 import mammoth from "mammoth";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,16 @@ import { contentToMarkdown } from "@/server/artifacts/exporters/markdown";
 import { renderMindmap } from "@/server/artifacts/exporters/mindmap-render";
 import { docxToPdfLibreOffice, markdownToPdfChromium } from "@/server/artifacts/exporters/pdf";
 import { registerDefaultEngines, registerEngines } from "@/server/artifacts/registry";
+
+/** LibreOffice là đường dự phòng tuỳ chọn (docs/08); máy phát triển không có `soffice` thì bỏ qua test đó thay vì báo lỗi. */
+const hasSoffice = (() => {
+  try {
+    execFileSync(process.platform === "win32" ? "where" : "which", ["soffice"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 const EVIDENCE = [
   { id: "c1", provider: "local" as const, sourceId: "s1", sourceTitle: "Giáo trình sinh học", locator: { page: 12 }, text: "…", score: 1 },
@@ -241,7 +252,7 @@ describe("PDF / PNG / SVG (Chromium, LibreOffice)", () => {
     expect(r.png!.length).toBeGreaterThan(3_000);
   }, 90_000);
 
-  it("dự phòng LibreOffice: DOCX → PDF hợp lệ", async () => {
+  it.skipIf(!hasSoffice)("dự phòng LibreOffice: DOCX → PDF hợp lệ", async () => {
     const docx = await markdownToDocx(MARKDOWN, { title: "t" });
     const pdf = await docxToPdfLibreOffice(docx, "kiểm tra");
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
