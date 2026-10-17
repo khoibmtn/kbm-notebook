@@ -4,20 +4,15 @@
 
 ## 1. Lấy mã nguồn về máy
 
-Mã nguồn chưa có trên máy cá nhân. Toàn bộ nằm trên GitHub:
-
-- Repo: `https://github.com/khoibmtn/kbm-notebook`
-- Nhánh chứa toàn bộ code: `claude/dazzling-rubin-xivuuk`
-- Nhánh `main` hiện chỉ có commit tài liệu đầu tiên. PR #1 gộp toàn bộ code vào `main` đang ở trạng thái draft.
+Toàn bộ mã nguồn nằm trên GitHub, nhánh `main` (PR #1 đã merge ngày 2026-10-17):
 
 ```bash
 git clone https://github.com/khoibmtn/kbm-notebook.git
 cd kbm-notebook
-git checkout claude/dazzling-rubin-xivuuk
 claude            # mở Claude Code; CLAUDE.md được nạp tự động
 ```
 
-Khuyến nghị trước khi làm tiếp: merge PR #1 vào `main` trên GitHub, đổi nhánh mặc định của repo sang `main` (Settings → General → Default branch), rồi làm việc trên `main` hoặc nhánh tính năng mới.
+Nếu `git clone` lấy nhầm nhánh khác (nhánh mặc định của repo chưa đổi), chạy thêm `git checkout main`. Nên đổi nhánh mặc định của repo sang `main` trong Settings → General → Default branch, và làm việc trên `main` hoặc nhánh tính năng mới tách từ `main`.
 
 ## 2. Mục tiêu sản phẩm (yêu cầu gốc của chủ dự án)
 
