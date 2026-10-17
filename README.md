@@ -138,6 +138,7 @@ Chi tiết kiến trúc, hợp đồng (`AiProvider`, `StorageAdapter`, jobs, re
 
 | Tài liệu | Nội dung |
 |---|---|
+| [docs/00-spec-du-an.md](docs/00-spec-du-an.md) | **Spec bàn giao: mục tiêu, hiện trạng, cài đặt máy cá nhân, backlog** |
 | [docs/01-nghien-cuu.md](docs/01-nghien-cuu.md) | Nghiên cứu sản phẩm |
 | [docs/02-kien-truc.md](docs/02-kien-truc.md) | Kiến trúc + ghi chú triển khai từng phase (§6–§13) |
 | [docs/03-mo-hinh-du-lieu.md](docs/03-mo-hinh-du-lieu.md) | Lược đồ dữ liệu, ma trận quyền |
