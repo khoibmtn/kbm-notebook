@@ -92,7 +92,8 @@ Mã lỗi hay gặp: `connector_not_configured` (412/400), `connector_error` (50
 
 ## 5. Giới hạn đã biết
 
-- **Bridge không chính thức**: có thể hỏng bất cứ lúc nào; chưa kiểm thử với Google thật trong môi trường này (chỉ với Bridge giả đúng hợp đồng JSON + pytest cho sidecar).
+- **Bridge không chính thức**: có thể hỏng bất cứ lúc nào. **Đã kiểm thử với Google thật ngày 2026-10-17** (notebooklm-py 0.8.5, macOS): `/health`, `GET /notebooks`, `POST …/ask` và luồng hỏi đáp trong app chạy đúng; phát hiện và sửa lỗi `is_connected` (property, không phải hàm). Các đường **chưa** thử với Google thật: `POST …/notes` (lưu vào NotebookLM), `GET …/fulltext` (nhập nguồn), tải artifact.
+- Vận hành trên máy cá nhân: cổng `8765` có thể đã bị một dịch vụ khác chiếm (vd. MCP server NotebookLM) → chạy Bridge ở cổng khác và nhập đúng URL đó trong Cài đặt; trên macOS 15 dùng `notebooklm login --browser chrome` vì Chromium đóng gói của Playwright có thể crash.
 - **Enterprise**: chưa kiểm thử với dự án GCP thật; tên trường phản hồi được parse "lỏng" theo tài liệu v1alpha và có thể đổi. Không có chat/ghi chú/xuất nguồn. Không có URL notebook công khai ổn định → thẻ không có liên kết "Mở".
 - **Drive**: tệp Google gốc export tối đa 10 MB (giới hạn của Drive); chỉ các định dạng pipeline ingest hỗ trợ; chưa đồng bộ lại khi tệp Drive đổi (nhập là bản chụp).
 - Token OAuth trong bảng `accounts` do better-auth lưu (không mã hoá ở mức ứng dụng; có thể bật `encryptOAuthTokens` của better-auth sau).

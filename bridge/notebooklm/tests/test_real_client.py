@@ -9,6 +9,7 @@ installed library's real signatures.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, create_autospec
@@ -32,10 +33,22 @@ def make_lib() -> SimpleNamespace:
         notes=create_autospec(_notes.NotesAPI, instance=True),
         artifacts=create_autospec(_artifacts.ArtifactsAPI, instance=True),
         sharing=create_autospec(_sharing.SharingAPI, instance=True),
-        is_connected=lambda: True,
+        # Như thư viện thật (0.8.x): `is_connected` là PROPERTY trả bool, không phải phương thức.
+        is_connected=True,
         get_account_email=AsyncMock(return_value="me@example.com"),
     )
     return lib
+
+
+def test_is_connected_matches_library_shape() -> None:
+    """Hồi quy: thư viện 0.8.5 khai báo `is_connected` là property; gọi như hàm → TypeError khi chạy thật."""
+    from notebooklm import NotebookLMClient
+
+    assert isinstance(inspect.getattr_static(NotebookLMClient, "is_connected"), property)
+    assert NotebookLMBridgeClient._connected(SimpleNamespace(is_connected=True)) is True
+    assert NotebookLMBridgeClient._connected(SimpleNamespace(is_connected=False)) is False
+    assert NotebookLMBridgeClient._connected(SimpleNamespace(is_connected=lambda: True)) is True
+    assert NotebookLMBridgeClient._connected(None) is False
 
 
 @pytest.fixture

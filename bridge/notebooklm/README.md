@@ -63,6 +63,7 @@ Rồi cài bridge bằng Cách 1 (không cần extra `[browser]` trong venv củ
 
 ```bash
 notebooklm login                        # mở trình duyệt (lần đầu tự tải Chromium ~170 MB), đăng nhập Google
+notebooklm login --browser chrome       # macOS 15+: dùng Google Chrome có sẵn (Chromium đóng gói có thể crash)
 notebooklm auth check --test --json     # kiểm tra: mong đợi "status": "ok"
 ```
 
@@ -87,6 +88,8 @@ export BRIDGE_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(3
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765
 # hoặc: .venv/bin/python -m app        (đọc BRIDGE_HOST / BRIDGE_PORT)
 ```
+
+Nếu cổng `8765` đã bị dịch vụ khác chiếm (`address already in use`, ví dụ một MCP server NotebookLM đang chạy), đổi `--port` (vd. `8766`) và nhập đúng URL đó trong Cài đặt → Kết nối.
 
 `BRIDGE_TOKEN` là **bắt buộc** (≥ 16 ký tự). Thiếu → bridge **từ chối khởi động**; mọi route (kể cả `/health`) đều cần
 `Authorization: Bearer <BRIDGE_TOKEN>`; so sánh token theo thời gian hằng định.

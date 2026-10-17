@@ -125,13 +125,21 @@ class NotebookLMBridgeClient:
         )
         return NotebookLMClient.from_storage(profile=self._profile, config=config)
 
+    @staticmethod
+    def _connected(client: Any) -> bool:
+        """``NotebookLMClient.is_connected`` is a *property* in notebooklm-py 0.8.x (a method in older builds)."""
+        if client is None:
+            return False
+        value = getattr(client, "is_connected", False)
+        return bool(value() if callable(value) else value)
+
     async def _ensure(self) -> Any:
         client = self._client
-        if client is not None and client.is_connected():
+        if self._connected(client):
             return client
         async with self._lock:
             client = self._client
-            if client is not None and client.is_connected():
+            if self._connected(client):
                 return client
             await self._close_quietly()
             ctx = self._new_context()
