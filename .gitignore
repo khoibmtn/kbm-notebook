@@ -17,6 +17,9 @@
 # user data
 /storage/
 
+# báo cáo kiểm chứng (scripts/verify-gemini.ts)
+/outputs/
+
 # env files (only .env.example is committed)
 .env*
 !.env.example

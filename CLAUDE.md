@@ -71,3 +71,4 @@ cd bridge/notebooklm && .venv/bin/pytest -q   # sidecar
 | `docs/08-trien-khai.md` | Docker, Cloud Run 0 đồng, biến môi trường |
 | `docs/09-kiem-thu.md` | Cách chạy test, checklist QA |
 | `docs/10-ra-soat-bao-mat.md` | 39 phát hiện bảo mật và trạng thái xử lý |
+| `docs/11-kiem-chung-gemini.md` | Kịch bản kiểm chứng Gemini thật (`pnpm verify:gemini`, checklist UI, hiệu chỉnh ngưỡng) |

@@ -141,8 +141,8 @@ Sau đó trong ứng dụng: Settings → Kết nối → NotebookLM Bridge, nh�
 
 Môi trường phát triển trước đây không có khoá AI và không có tài khoản Google, nên các đường sau mới chỉ chạy bằng mock hoặc server giả:
 
-1. **Gemini thật:** chat có trích dẫn, embedding, sinh slide deck/quiz/infographic, sinh ảnh, web grounding. Cần đánh giá chất lượng nội dung tiếng Việt và ngưỡng `INSUFFICIENT_SIMILARITY_THRESHOLD` (0.25) với embedding thật.
-2. **Model ID:** mặc định `gemini-flash-latest`, `gemini-pro-latest`, `gemini-embedding-001`; ảnh `gemini-2.5-flash-image` cần đối chiếu danh sách model hiện hành (`listModels`).
+1. **Gemini thật:** chat có trích dẫn, embedding, sinh slide deck/quiz/infographic, sinh ảnh, web grounding. Cần đánh giá chất lượng nội dung tiếng Việt và ngưỡng `INSUFFICIENT_SIMILARITY_THRESHOLD` (0.25) với embedding thật. **Kịch bản đã soạn:** `docs/11-kiem-chung-gemini.md` + script `pnpm verify:gemini` (chạy 2026-10-17 với mock để kiểm đường ống; chưa chạy với khoá thật).
+2. **Model ID:** mặc định `gemini-flash-latest`, `gemini-pro-latest`, `gemini-embedding-001`; ảnh `gemini-2.5-flash-image` cần đối chiếu danh sách model hiện hành (`listModels`) — `pnpm verify:gemini --only models` (docs/11 §2).
 3. **NotebookLM Bridge** với tài khoản Google thật: health, liệt kê notebook, hỏi đáp, đẩy ghi chú, nhập nguồn, tải artifact.
 4. **Google OAuth và Drive import:** cần tạo OAuth Client trên Google Cloud Console, redirect `http://localhost:3000/api/auth/callback/google`.
 5. **Docker image** và `docker compose up`: chưa build lần nào.

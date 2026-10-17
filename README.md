@@ -109,6 +109,7 @@ Trong sổ tay: cột Nguồn → **Kết nối ngoài** → "Kết nối notebo
 | `pnpm db:migrate` | Áp dụng migration trong `drizzle/` |
 | `cd bridge/notebooklm && pytest` | Test sidecar NotebookLM Bridge (không cần đăng nhập Google) |
 | `pnpm db:push` | Đẩy schema trực tiếp (chỉ dùng khi dev) |
+| `pnpm verify:gemini` | Kiểm chứng Gemini thật ngoài giao diện: model ID, embedding/ngưỡng, chat có trích dẫn, quiz/slide/infographic, ảnh, web grounding ([docs/11-kiem-chung-gemini.md](docs/11-kiem-chung-gemini.md)) |
 
 ## Cấu trúc
 
@@ -148,3 +149,4 @@ Chi tiết kiến trúc, hợp đồng (`AiProvider`, `StorageAdapter`, jobs, re
 | [docs/07-ket-noi.md](docs/07-ket-noi.md) | NotebookLM Bridge/Enterprise, Google Drive |
 | [docs/08-trien-khai.md](docs/08-trien-khai.md) | Triển khai production: Docker, biến môi trường, nginx, sao lưu, OAuth Google, Gemini |
 | [docs/09-kiem-thu.md](docs/09-kiem-thu.md) | Chạy unit/API/e2e, DB test, mock provider, danh mục QA thủ công |
+| [docs/11-kiem-chung-gemini.md](docs/11-kiem-chung-gemini.md) | Kịch bản kiểm chứng Gemini thật: script, checklist giao diện, hiệu chỉnh ngưỡng thiếu bằng chứng |
