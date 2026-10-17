@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "server-only": ["./scripts/server-only-stub.ts"]
+    }
+  },
+  "include": ["server.ts", "src/**/*.ts", "scripts/**/*.ts"]
+}

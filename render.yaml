@@ -1,0 +1,48 @@
+# Render Blueprint (phương án dự phòng 0 đồng nếu không dùng GCP): web service gói free chạy Dockerfile của repo,
+# CSDL = Supabase free (Postgres + pgvector). Xem docs/08-trien-khai.md, mục 14.7.
+#
+# CHƯA THỬ: không kiểm thử được từ môi trường phát triển (không có tài khoản Render). Gói free chỉ có 512 MB RAM, tự ngủ sau
+# ~15 phút không có request (khởi động lại chậm), không có đĩa bền => tệp tải lên mất khi service khởi động lại; Chromium xuất
+# PDF + Next.js trong 512 MB có thể không đủ (xuất PDF dễ bị OOM). Dùng cho demo rất nhẹ.
+#
+# Dùng: Render Dashboard -> New -> Blueprint -> chọn repo này -> điền các biến "sync: false" khi được hỏi.
+services:
+  - type: web
+    name: kbm-notebook
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AI_PROVIDER
+        value: gemini
+      - key: STORAGE_DIR
+        value: /data/storage
+      - key: PW_CHROMIUM_PATH
+        value: /usr/bin/chromium
+      - key: CONNECTORS_ALLOW_PRIVATE_HOSTS
+        value: "false"
+      - key: AUTH_REQUIRE_EMAIL_VERIFICATION
+        value: "false"
+      - key: DB_POOL_MAX
+        value: "5"
+      # Không đặt SKIP_MIGRATE: CMD mặc định của Dockerfile tự chạy migration mỗi lần khởi động (gói free không có pre-deploy command).
+      # Render tự đặt PORT; server của app đọc PORT nên không cần khai báo.
+
+      # --- Điền khi tạo Blueprint (không lưu trong repo) ---
+      - key: DATABASE_URL # Supabase Session pooler (cổng 5432), kết thúc bằng ?sslmode=require
+        sync: false
+      - key: BETTER_AUTH_URL # https://<tên-service>.onrender.com
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL # giống BETTER_AUTH_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET # openssl rand -base64 32
+        sync: false
+      - key: APP_ENCRYPTION_KEY # openssl rand -hex 32 (đúng 64 ký tự hex)
+        sync: false
+      - key: GEMINI_API_KEY # khoá miễn phí ở https://aistudio.google.com/apikey
+        sync: false

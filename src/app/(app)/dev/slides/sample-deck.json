@@ -1,0 +1,156 @@
+{
+  "_comment": "DEV FIXTURE — dữ liệu minh hoạ chỉ để xem trước giao diện editor/xuất file. Không phải dữ liệu sản phẩm.",
+  "theme": { "palette": "indigo", "font": "Inter" },
+  "evidence": [
+    {
+      "id": "ev-1",
+      "provider": "local",
+      "sourceId": null,
+      "sourceTitle": "Báo cáo năng lượng (fixture)",
+      "locator": { "page": 4 },
+      "text": "Đoạn trích minh hoạ về cơ cấu nguồn điện.",
+      "score": 0.9
+    },
+    {
+      "id": "ev-2",
+      "provider": "local",
+      "sourceId": null,
+      "sourceTitle": "Phân tích chính sách (fixture)",
+      "locator": { "section": "Cơ chế giá điện" },
+      "text": "Đoạn trích minh hoạ về chính sách hỗ trợ.",
+      "score": 0.8
+    },
+    {
+      "id": "ev-3",
+      "provider": "web",
+      "sourceId": null,
+      "sourceTitle": "Tổng quan thị trường (fixture)",
+      "locator": { "url": "https://example.com/tong-quan" },
+      "text": "Đoạn trích minh hoạ từ web.",
+      "score": 0.7
+    }
+  ],
+  "slides": [
+    {
+      "id": "s1",
+      "layout": "title",
+      "title": "Chuyển dịch năng lượng tái tạo",
+      "subtitle": "Bức tranh tổng quan, số liệu chính và định hướng — bản xem trước editor",
+      "notes": "Chào mở đầu, nêu mục tiêu buổi trình bày trong khoảng ba mươi giây."
+    },
+    {
+      "id": "s2",
+      "layout": "title_bullets",
+      "title": "Vì sao cần chuyển dịch?",
+      "subtitle": "Ba động lực chính",
+      "bullets": [
+        "Nhu cầu điện tăng nhanh theo tăng trưởng",
+        "Chi phí điện gió và mặt trời giảm mạnh",
+        "Cam kết giảm phát thải ròng về 0",
+        "An ninh năng lượng, bớt phụ thuộc nhập khẩu"
+      ],
+      "notes": "Nhấn mạnh rằng ba động lực này củng cố lẫn nhau. Dẫn thêm ví dụ từ nguồn nếu cần.",
+      "citations": [1]
+    },
+    {
+      "id": "s3",
+      "layout": "section",
+      "title": "Phần 1 — Hiện trạng",
+      "subtitle": "Cơ cấu nguồn điện và xu hướng gần đây"
+    },
+    {
+      "id": "s4",
+      "layout": "chart",
+      "title": "Công suất lắp đặt theo nguồn",
+      "bullets": ["Mặt trời tăng nhanh nhất", "Thuỷ điện vẫn là nền tảng", "Điện gió còn dư địa lớn"],
+      "chart": {
+        "type": "bar",
+        "labels": ["Thuỷ điện", "Nhiệt điện than", "Mặt trời", "Gió", "Khác"],
+        "series": [{ "name": "GW (minh hoạ)", "values": [22, 26, 17, 5, 4] }]
+      },
+      "notes": "Giải thích cách đọc biểu đồ; lưu ý đây là dữ liệu minh hoạ của fixture.",
+      "citations": [1, 3]
+    },
+    {
+      "id": "s5",
+      "layout": "two_column",
+      "title": "Cơ hội và thách thức",
+      "columns": [
+        {
+          "heading": "Cơ hội",
+          "bullets": ["Tiềm năng nắng và gió lớn", "Chuỗi cung ứng trong nước", "Vốn xanh quốc tế"]
+        },
+        {
+          "heading": "Thách thức",
+          "bullets": ["Lưới truyền tải quá tải", "Biến động theo thời tiết", "Cơ chế giá chưa ổn định"]
+        }
+      ],
+      "notes": "So sánh hai cột, dừng lại ở thách thức lưới điện.",
+      "citations": [2]
+    },
+    {
+      "id": "s6",
+      "layout": "image_text",
+      "title": "Điện mặt trời mái nhà",
+      "bullets": ["Lắp ngay tại điểm tiêu thụ", "Giảm tổn thất truyền tải", "Hoàn vốn trong vài năm"],
+      "image": { "prompt": "Mái nhà dân cư phủ pin mặt trời dưới trời nắng, phong cách minh hoạ phẳng", "caption": "Minh hoạ — chưa có ảnh" },
+      "notes": "Nêu ví dụ hộ gia đình và doanh nghiệp nhỏ."
+    },
+    {
+      "id": "s7",
+      "layout": "chart",
+      "title": "Xu hướng chi phí điện mặt trời",
+      "chart": {
+        "type": "line",
+        "labels": ["2019", "2020", "2021", "2022", "2023", "2024"],
+        "series": [
+          { "name": "Chi phí (minh hoạ)", "values": [100, 88, 76, 70, 64, 58] },
+          { "name": "Mục tiêu (minh hoạ)", "values": [100, 90, 80, 72, 65, 60] }
+        ]
+      },
+      "citations": [3]
+    },
+    {
+      "id": "s8",
+      "layout": "table",
+      "title": "So sánh các công nghệ",
+      "table": {
+        "headers": ["Công nghệ", "Ưu điểm", "Hạn chế", "Giai đoạn"],
+        "rows": [
+          ["Mặt trời", "Chi phí giảm, lắp nhanh", "Chỉ phát ban ngày", "Trưởng thành"],
+          ["Gió trên bờ", "Hệ số công suất cao", "Cần mặt bằng, gió ổn định", "Trưởng thành"],
+          ["Gió ngoài khơi", "Tiềm năng rất lớn", "Vốn đầu tư cao", "Đang phát triển"],
+          ["Pin lưu trữ", "Cân bằng phụ tải", "Giá còn cao", "Đang mở rộng"]
+        ]
+      },
+      "citations": [2, 3]
+    },
+    {
+      "id": "s9",
+      "layout": "chart",
+      "title": "Cơ cấu điện năng dự kiến",
+      "chart": {
+        "type": "pie",
+        "labels": ["Tái tạo", "Khí", "Than", "Thuỷ điện"],
+        "series": [{ "name": "Tỷ trọng (minh hoạ)", "values": [30, 25, 25, 20] }]
+      }
+    },
+    {
+      "id": "s10",
+      "layout": "quote",
+      "title": "Nhận định",
+      "quote": {
+        "text": "Chuyển dịch năng lượng không chỉ là bài toán kỹ thuật, mà là bài toán thể chế và niềm tin.",
+        "attribution": "Trích nguồn minh hoạ"
+      },
+      "citations": [2]
+    },
+    {
+      "id": "s11",
+      "layout": "closing",
+      "title": "Kết luận",
+      "bullets": ["Nhu cầu và cam kết thúc đẩy chuyển dịch", "Lưới điện và cơ chế giá là điểm nghẽn", "Ưu tiên lưu trữ và truyền tải"],
+      "notes": "Tóm tắt ba thông điệp và mời đặt câu hỏi."
+    }
+  ]
+}

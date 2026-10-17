@@ -6,7 +6,7 @@ Quy ước: `id uuid pk default gen_random_uuid()`, `created_at/updated_at times
 `users(id, name, email unique, email_verified, image, created_at, updated_at)`, `sessions`, `accounts` (Google OAuth tokens: access/refresh, scope), `verifications`. Mở rộng: `user_profiles(user_id pk→users, display_name, title, bio, locale 'vi', theme)`.
 
 ## Settings
-- `user_settings(user_id pk, gemini_api_key_enc text, default_chat_model, default_artifact_model, embedding_model 'gemini-embedding-001', embedding_dim 768, notify_email bool, prompts jsonb)` — `prompts` = map `{ [artifactType]: { system, user, options } }` ghi đè prompt mặc định trong code (`src/server/ai/prompts/defaults.ts`).
+- `user_settings(user_id pk, gemini_api_key_enc text, connectors_enc text (JSON mã hoá: cài đặt NotebookLM Bridge/Enterprise — P5), default_chat_model, default_artifact_model, embedding_model 'gemini-embedding-001', embedding_dim 768, notify_email bool, prompts jsonb)` — `prompts` = map `{ [artifactType]: { system, user, options } }` ghi đè prompt mặc định trong code (`src/server/ai/prompts/defaults.ts`).
 - `app_settings(key pk, value jsonb)` (server-level, admin).
 
 ## Notebook & thành viên
@@ -30,7 +30,8 @@ Ma trận quyền:
 ## Nguồn tri thức
 - `sources(id, notebook_id, created_by, kind enum('file','url','text','youtube','drive','chat_attachment'), title, mime, file_id→files null, url null, raw_text null, visibility enum('shared','private') default 'shared', status enum('pending','processing','ready','failed'), error text, page_count int, token_count int, summary text, key_topics jsonb, metadata jsonb, created_at, updated_at, deleted_at)`
 - `source_chunks(id, source_id, notebook_id, idx int, text, token_count, page int null, section text null, start_char int, end_char int, embedding vector(768), tsv tsvector generated)` — index HNSW `embedding vector_cosine_ops`, GIN `tsv`, index `(notebook_id, source_id)`.
-- `files(id, owner_id, storage_key, original_name, mime, size_bytes, sha256, created_at)`.
+- `files(id, owner_id, storage_key, original_name, mime, size_bytes, sha256, notebook_id→notebooks null, origin text null, created_at)` — `notebook_id` dùng tính quota `MAX_NOTEBOOK_STORAGE_MB`; `origin` ∈ `source_upload|chat_upload|artifact_image|export|drive` (tệp `chat_upload` mồ côi > 24 giờ bị job `cleanup_orphan_files` dọn).
+- `artifact_files(artifact_id→artifacts, file_id→files, created_at, pk(artifact_id,file_id))` — ảnh thuộc artifact do **server** ghi (upload ảnh, ảnh AI, fork); luật truy cập tệp dựa vào bảng này chứ không dựa vào JSON nội dung.
 - `notebook_connections(id, notebook_id, owner_user_id, provider enum('notebooklm-bridge','notebooklm-enterprise','google-drive'), external_id text (notebook id ngoài), label, config jsonb (không chứa secret), credential_enc text null, shared_with_members bool default false, status enum('unconfigured','ready','error'), last_error, last_synced_at, created_at)` — cache: `connection_sources(id, connection_id, external_source_id, title, kind, metadata jsonb, synced_at)`.
 
 ## Chat AI
@@ -42,7 +43,7 @@ Ma trận quyền:
 - `notes(id, notebook_id, created_by, title, content_md text, content_json jsonb null, origin enum('manual','chat','team_chat','artifact'), origin_ref jsonb, visibility enum('shared','private') default 'shared', is_source bool default false (đã "thêm vào nguồn" → tạo `sources.kind='text'` liên kết `metadata.note_id`), created_at, updated_at, deleted_at)`.
 
 ## Studio / Artifact
-- `artifacts(id, notebook_id, created_by, type enum('note','report','study_guide','faq','timeline','mindmap','slide_deck','infographic','quiz','flashcards','data_table'), title, status enum('queued','generating','ready','failed'), error, current_version_id→artifact_versions, visibility enum('private','notebook','link','public'), share_token unique null, generation_config jsonb {prompt, customPrompt, options, scope, model}, forked_from_id null, created_at, updated_at, deleted_at)`
+- `artifacts(id, notebook_id, created_by, type enum('note','report','study_guide','faq','timeline','mindmap','slide_deck','infographic','quiz','flashcards','data_table'), title, status enum('queued','generating','ready','failed'), error, current_version_id→artifact_versions, visibility enum('private','notebook','link','public'), share_token unique null, contains_private_sources bool default false, generation_config jsonb {prompt, customPrompt, options, scope, model}, forked_from_id null, created_at, updated_at, deleted_at)`
 - `artifact_versions(id, artifact_id, version_no int, content jsonb, content_md text null, created_by, note text, created_at)` — content theo schema từng loại (`src/server/artifacts/schemas.ts`):
   - `slide_deck`: `{ theme: {palette, font}, slides: [{ id, layout:'title'|'title_bullets'|'two_column'|'image_text'|'chart'|'quote'|'section'|'closing', title, subtitle?, bullets?: string[], columns?: [{heading, bullets}], image?: {prompt, fileId?, caption}, chart?: {type:'bar'|'line'|'pie', labels, series:[{name, values}]}, notes?: string, citations?: number[] }], evidence: Evidence[] }`
   - `quiz`: `{ questions: [{ id, type:'mcq'|'tf'|'short', stem, options?: [{key,text}], answer, explanation, citations?: number[], difficulty }] , evidence }`
@@ -63,8 +64,10 @@ Ma trận quyền:
 - `notifications(id, user_id, type, title, body, link, data jsonb, read_at, created_at)`.
 
 ## Community
-- `groups(id, name, slug, description, owner_id, visibility)` + `group_members` + `group_notebooks` (giai đoạn 2; MVP: Explore dùng `artifacts.visibility='public'` và `notebooks.is_public`).
+- `groups(id, name, slug unique, description, owner_id, visibility 'private'|'public', created_at)` + `group_members(group_id, user_id, role owner|admin|viewer, joined_at)` + `group_notebooks(group_id, notebook_id)`. `visibility='public'` = ai cũng tham gia được; `'private'` = chỉ theo lời mời. Vai trò `viewer` hiển thị là "Thành viên".
 - `artifact_likes(artifact_id, user_id)`, `artifact_comments(id, artifact_id, user_id, body, created_at)`.
+- `notebook_join_requests(id, notebook_id, user_id, message, status 'pending'|'accepted'|'rejected', created_at, decided_at, decided_by)` (P6, migration `0002`): yêu cầu tham gia sổ tay công khai; duy nhất một yêu cầu `pending` mỗi (sổ tay, người dùng).
+- Explore dùng `artifacts.visibility='public'` (đã `ready`, chưa xoá) và `notebooks.is_public` + `public_slug` (trang `/p/<slug>` chỉ lộ tiêu đề/mô tả/emoji/artifact công khai).
 
 ## Hạ tầng
 - `jobs(id, type, payload jsonb, status enum('queued','running','done','failed'), attempts, max_attempts 3, run_at, locked_at, locked_by, progress int, result jsonb, error, created_at, updated_at)`.
