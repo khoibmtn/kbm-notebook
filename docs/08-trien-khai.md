@@ -290,7 +290,7 @@ postgresql://postgres.<PROJECT_REF>:<MẬT_KHẨU>@aws-0-<vùng>.pooler.supabase
 | Variable | `GCP_REGION` | `us-central1` (mặc định nếu bỏ trống) |
 | Variable | `GCS_BUCKET` | Tên bucket do script in ra |
 | Variable | `AUTH_REQUIRE_EMAIL_VERIFICATION` | `false` cho bản demo (mặc định của workflow) |
-| Variable (tuỳ chọn) | `APP_URL`, `MIN_INSTANCES`, `MAX_INSTANCES`, `CPU_ALWAYS_ON`, `GCS_MOUNT_OPTIONS`, `TRUSTED_ORIGINS`, `EMAIL_FROM`, `MAX_UPLOAD_MB`, `MAX_NOTEBOOK_STORAGE_MB`, `MAX_UPLOAD_REQUEST_MB`, `DB_POOL_MAX`, `RUNTIME_SA`, `AR_REPO`, `AUTO_DEPLOY` | Mặc định: min 0, max 1, `CPU_ALWAYS_ON=false`, `DB_POOL_MAX=5`. `AUTO_DEPLOY=false` tắt tự deploy khi push. |
+| Variable (tuỳ chọn) | `APP_URL`, `MIN_INSTANCES`, `MAX_INSTANCES`, `CPU_ALWAYS_ON`, `GCS_MOUNT_OPTIONS`, `TRUSTED_ORIGINS`, `EMAIL_FROM`, `MAX_UPLOAD_MB`, `MAX_NOTEBOOK_STORAGE_MB`, `MAX_UPLOAD_REQUEST_MB`, `DB_POOL_MAX`, `RUNTIME_SA`, `AR_REPO`, `AUTO_DEPLOY` | Mặc định: min 0, max 1, `CPU_ALWAYS_ON=false`, `DB_POOL_MAX=5`. Tự deploy khi push vào `main` chỉ bật khi đặt `AUTO_DEPLOY=true`; mặc định chỉ chạy tay (Actions → Deploy Cloud Run → Run workflow). |
 
 `GCP_PROJECT_ID`/`GCP_REGION` chấp nhận cả variable lẫn secret. Có thể đặt trong *Environment* `production` thay vì cấp repo.
 

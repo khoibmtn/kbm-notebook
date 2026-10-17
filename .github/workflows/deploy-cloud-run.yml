@@ -38,8 +38,9 @@ concurrency:
 jobs:
   deploy:
     name: Build, migrate, deploy
-    # Tắt tự động deploy khi push: đặt repository variable AUTO_DEPLOY=false (vẫn chạy tay được).
-    if: github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY != 'false'
+    # Tự deploy khi push vào main chỉ bật khi đặt repository variable AUTO_DEPLOY=true
+    # (sau khi đã cấu hình đủ secret). Mặc định chỉ chạy tay qua "Run workflow".
+    if: github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: ${{ inputs.environment || 'production' }}
