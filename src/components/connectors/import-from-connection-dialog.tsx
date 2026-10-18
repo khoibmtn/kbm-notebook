@@ -11,8 +11,10 @@ import { api, ApiClientError, errorMessage } from "@/lib/api-client";
 import type { ConnectionDto, ExternalSource } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 
+export type ImportedSource = { externalSourceId: string; sourceId: string; title: string };
+
 type ImportResult = {
-  imported: { externalSourceId: string; sourceId: string; title: string }[];
+  imported: ImportedSource[];
   failed: { externalSourceId: string; message: string }[];
 };
 
@@ -20,8 +22,8 @@ type Props = {
   notebookId: string;
   connection: ConnectionDto | null;
   onOpenChange: (open: boolean) => void;
-  /** Gọi sau khi nhập xong để tải lại danh sách nguồn. */
-  onImported: () => void;
+  /** Gọi sau khi nhập xong (chỉ khi có nguồn nhập được) với các nguồn đã nhập, để chọn chúng và tải lại danh sách. */
+  onImported: (imported: ImportedSource[]) => void;
 };
 
 /** "Nhập nguồn vào sổ tay": liệt kê nguồn hiện có trong notebook NotebookLM, chọn và nhập (văn bản đầy đủ → nguồn text + ingest). */
@@ -66,7 +68,7 @@ export function ImportFromConnectionDialog({ notebookId, connection, onOpenChang
       setResult(res);
       if (res.imported.length > 0) {
         toast.success(t("connectors.import.done", { count: res.imported.length }));
-        onImported();
+        onImported(res.imported);
       }
     } catch (e) {
       if (e instanceof ApiClientError && e.code === "bridge_fulltext_unsupported") setError(t("connectors.import.unsupported"));

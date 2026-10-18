@@ -80,6 +80,14 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
     [add, reload],
   );
 
+  const onImportedFromConnection = useCallback(
+    (imported: { sourceId: string }[]) => {
+      if (imported.length > 0) add(imported.map((i) => i.sourceId)); // nguồn vừa nhập mặc định được chọn
+      void reload();
+    },
+    [add, reload],
+  );
+
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -190,7 +198,7 @@ export function SourcesPanel({ maxUploadMb, initialViewSourceId = null, initialA
         )}
       </div>
 
-      <ConnectionsSection state={connectionsState} notebookId={notebook.id} canEdit={canEdit} onAdd={() => openAdd("connect")} onImported={() => void reload()} />
+      <ConnectionsSection state={connectionsState} notebookId={notebook.id} canEdit={canEdit} onAdd={() => openAdd("connect")} onImported={onImportedFromConnection} />
 
       <AddSourceDialog
         notebookId={notebook.id}

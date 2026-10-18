@@ -1,12 +1,26 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownWithCitations } from "@/components/chat/markdown-with-citations";
 import { AssistantMessage } from "@/components/chat/message-item";
 import { ConnectionCard } from "@/components/connectors/connection-card";
+import { NotebookProvider } from "@/components/notebook/notebook-context";
+import { SourcesPanel } from "@/components/sources/sources-panel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Evidence } from "@/lib/chat";
 import type { ConnectionDto } from "@/lib/connectors";
+import type { SourceDto } from "@/lib/sources";
+import { getSelectedSourceIds } from "@/lib/use-source-selection";
+
+const apiMock = vi.hoisted(() => ({ api: vi.fn() }));
+vi.mock("@/lib/api-client", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/api-client")>();
+  return { ...mod, api: apiMock.api };
+});
+vi.mock("@/lib/realtime", () => ({
+  useRealtime: () => ({ connected: false }),
+  useRealtimeEvent: () => undefined,
+}));
 
 const evidence: Evidence[] = [
   { id: "c1", provider: "local", sourceId: "s1", sourceTitle: "Giáo trình", locator: { page: 3 }, text: "Quang hợp ở lục lạp.", score: 0.03, similarity: 0.7 },
@@ -148,5 +162,139 @@ describe("ConnectionCard", () => {
     expect(screen.queryByTestId("connection-error")).not.toBeInTheDocument();
     expect(screen.queryByTestId("connection-menu")).not.toBeInTheDocument();
     expect(screen.getByText(/Của Bình/)).toBeInTheDocument();
+  });
+});
+
+describe("nhập nguồn từ NotebookLM vào phạm vi Chat", () => {
+  const SEL_KEY = "kbm:sources:selected:nb1";
+  const ctx = {
+    role: "owner" as const,
+    user: { id: "u1", name: "An", email: "an@x.com" },
+    notebook: { id: "nb1", title: "Sổ tay", description: null, emoji: null, coverColor: null, systemInstruction: null, allowWeb: false, defaultArtifactVisibility: "notebook" as const, ownerId: "u1" },
+  };
+  const conn: ConnectionDto = {
+    id: "c1",
+    notebookId: "nb1",
+    provider: "notebooklm-bridge",
+    externalId: "ext-1",
+    externalUrl: null,
+    label: "Giải phẫu ngoài",
+    status: "ready",
+    lastError: null,
+    lastSyncedAt: null,
+    createdAt: new Date().toISOString(),
+    ownerUserId: "u1",
+    ownerName: "An",
+    isMine: true,
+    sharedWithMembers: false,
+    usable: true,
+    supportsChat: true,
+    canDelete: true,
+    sourceCount: 2,
+    sources: [],
+  };
+  const src = (id: string, status: SourceDto["status"]): SourceDto => ({
+    id,
+    notebookId: "nb1",
+    kind: "text",
+    fileType: null,
+    title: `Nguồn ${id}`,
+    mime: null,
+    url: null,
+    fileId: null,
+    visibility: "shared",
+    status,
+    progress: status === "ready" ? 100 : 0,
+    error: null,
+    pageCount: null,
+    pageUnit: null,
+    tokenCount: null,
+    summary: null,
+    keyTopics: null,
+    createdBy: "u1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    canManage: true,
+  });
+
+  /** Dựng API giả: danh sách nguồn (đổi được sau khi nhập), kết nối, nguồn ngoài và kết quả nhập. */
+  function setupApi(importResult: { imported: { externalSourceId: string; sourceId: string; title: string }[]; failed: { externalSourceId: string; message: string }[] }) {
+    let sources: SourceDto[] = [src("s1", "ready")];
+    apiMock.api.mockImplementation(async (path: string) => {
+      if (path.endsWith("/drive/files")) {
+        return { files: [{ id: "d1", name: "Tài liệu Drive", mimeType: "application/pdf", modifiedTime: null, size: null, webViewLink: null }], nextPageToken: null };
+      }
+      if (path.endsWith("/drive/import")) {
+        sources = [...sources, src("s7", "pending")];
+        return { imported: [{ driveFileId: "d1", sourceId: "s7", title: "Tài liệu Drive" }], failed: [] };
+      }
+      if (path.endsWith("/connections/c1/import")) {
+        sources = [...sources, ...importResult.imported.map((i) => src(i.sourceId, "pending"))];
+        return importResult;
+      }
+      if (path.endsWith("/connections/c1/sources")) {
+        return { sources: [{ id: "e1", title: "Ngoài 1", kind: "text", status: "ready", url: null }, { id: "e2", title: "Ngoài 2", kind: "text", status: "ready", url: null }] };
+      }
+      if (path.endsWith("/connections")) return { connections: [conn] };
+      if (path.endsWith("/sources")) return { sources };
+      throw new Error(`api không mong đợi: ${path}`);
+    });
+  }
+
+  async function openImportAndSubmit(externalTitles: string[]) {
+    wrap(
+      <NotebookProvider value={ctx}>
+        <SourcesPanel maxUploadMb={10} />
+      </NotebookProvider>,
+    );
+    await userEvent.click(await screen.findByTestId("connection-menu"));
+    await userEvent.click(await screen.findByTestId("connection-import"));
+    for (const title of externalTitles) await userEvent.click(await screen.findByRole("checkbox", { name: title }));
+    await userEvent.click(screen.getByTestId("import-submit"));
+  }
+
+  beforeEach(() => {
+    apiMock.api.mockReset();
+    localStorage.clear();
+  });
+
+  it("nguồn vừa nhập (còn pending) được thêm vào lựa chọn Chat ngay", async () => {
+    setupApi({ imported: [{ externalSourceId: "e1", sourceId: "s9", title: "Ngoài 1" }], failed: [] });
+    await openImportAndSubmit(["Ngoài 1"]);
+    await waitFor(() => expect(getSelectedSourceIds("nb1")).toContain("s9"));
+    expect(JSON.parse(localStorage.getItem(SEL_KEY)!)).toEqual(["s1", "s9"]);
+  });
+
+  it("nhập một phần: chỉ id của nguồn nhập được vào lựa chọn", async () => {
+    setupApi({
+      imported: [{ externalSourceId: "e1", sourceId: "s9", title: "Ngoài 1" }],
+      failed: [{ externalSourceId: "e2", message: "Không lấy được nội dung" }],
+    });
+    await openImportAndSubmit(["Ngoài 1", "Ngoài 2"]);
+    await waitFor(() => expect(getSelectedSourceIds("nb1")).toContain("s9"));
+    expect(getSelectedSourceIds("nb1")).toEqual(["s1", "s9"]);
+    expect(await screen.findByText("Không lấy được nội dung")).toBeInTheDocument();
+  });
+
+  it("không nhập được nguồn nào: không đổi lựa chọn đã lưu", async () => {
+    setupApi({ imported: [], failed: [{ externalSourceId: "e1", message: "Lỗi nhập" }] });
+    await openImportAndSubmit(["Ngoài 1"]);
+    expect(await screen.findByText("Lỗi nhập")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(SEL_KEY)!)).toEqual(["s1"]);
+  });
+
+  it("hồi quy: nguồn nhập từ Google Drive cũng tự vào lựa chọn Chat", async () => {
+    setupApi({ imported: [], failed: [] });
+    wrap(
+      <NotebookProvider value={ctx}>
+        <SourcesPanel maxUploadMb={10} />
+      </NotebookProvider>,
+    );
+    await userEvent.click(await screen.findByTestId("add-source-button"));
+    await userEvent.click(await screen.findByTestId("tab-drive"));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Tài liệu Drive" }));
+    await userEvent.click(screen.getByTestId("drive-import-submit"));
+    await waitFor(() => expect(getSelectedSourceIds("nb1")).toContain("s7"));
+    expect(getSelectedSourceIds("nb1")).toEqual(["s1", "s7"]);
   });
 });

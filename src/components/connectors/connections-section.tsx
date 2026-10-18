@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { ConnectionDto } from "@/lib/connectors";
 import { useT } from "@/lib/i18n-client";
 import { ConnectionCard, type ConnectionCardActions } from "./connection-card";
-import { ImportFromConnectionDialog } from "./import-from-connection-dialog";
+import { ImportFromConnectionDialog, type ImportedSource } from "./import-from-connection-dialog";
 import type { useConnections } from "./use-connections";
 
 type Props = {
@@ -14,8 +14,8 @@ type Props = {
   notebookId: string;
   canEdit: boolean;
   onAdd: () => void;
-  /** Sau khi nhập nguồn từ NotebookLM: tải lại danh sách nguồn. */
-  onImported: () => void;
+  /** Sau khi nhập nguồn từ NotebookLM: nhận các nguồn đã nhập (để chọn vào phạm vi Chat) và tải lại danh sách nguồn. */
+  onImported: (imported: ImportedSource[]) => void;
 };
 
 /** Mục "Kết nối ngoài" dưới danh sách nguồn trong cột Nguồn. */
