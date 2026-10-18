@@ -100,7 +100,7 @@ Mọi khoá có trong `.env.example`. **Bắt buộc**: `DATABASE_URL`, `BETTER_
 | `APP_ENCRYPTION_KEY` | — | 64 ký tự hex (32 byte) — khoá AES-256-GCM mã hoá API key/credential. **Mất khoá = mất các khoá Gemini/kết nối đã lưu.** Sao lưu cùng DB, tách riêng khỏi DB |
 | `AI_PROVIDER` | `gemini` | `gemini` hoặc `mock` (dữ liệu giả lập — **không dùng production**) |
 | `GEMINI_API_KEY` | — | Khoá Gemini dùng chung của máy chủ (tuỳ chọn; người dùng có thể nhập khoá riêng) |
-| `GEMINI_CHAT_MODEL` / `GEMINI_ARTIFACT_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_IMAGE_MODEL` | `gemini-flash-latest` / `gemini-pro-latest` / `gemini-embedding-001` / `gemini-2.5-flash-image` | Ghi đè model mặc định |
+| `GEMINI_CHAT_MODEL` / `GEMINI_ARTIFACT_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_IMAGE_MODEL` | `gemini-3.5-flash` / `gemini-pro-latest` / `gemini-embedding-001` / `gemini-2.5-flash-image` | Ghi đè model mặc định |
 | `MOCK_AI_FIXTURES_DIR` | — | Chỉ với `AI_PROVIDER=mock`: thư mục chứa `artifact_<loại>.json` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Bật đăng nhập Google và nhập nguồn từ Google Drive |
 | `CONNECTORS_ALLOW_PRIVATE_HOSTS` | `false` | Mặc định chặn NotebookLM Bridge ở localhost/LAN (chống SSRF). Chỉ đặt `true` khi máy chủ chạy riêng cho người/nhóm tin cậy |

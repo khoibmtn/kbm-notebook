@@ -56,7 +56,8 @@ export class AiProviderError extends Error {
 
 /** Model mặc định (có thể ghi đè bằng biến môi trường hoặc user_settings). */
 export const DEFAULT_MODELS = {
-  chat: process.env.GEMINI_CHAT_MODEL || "gemini-flash-latest",
+  // 2026-10-18: alias `gemini-flash-latest` hay trả 503 "high demand"; `gemini-3.5-flash` ổn định hơn (docs/11 §6).
+  chat: process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash",
   artifact: process.env.GEMINI_ARTIFACT_MODEL || "gemini-pro-latest",
   embedding: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
   image: process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",

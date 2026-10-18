@@ -31,7 +31,7 @@ Script gọi `models.list` và đối chiếu 4 model mặc định trong `src/s
 
 | Vai trò | Mặc định hiện tại | Cách ghi đè |
 |---|---|---|
-| Chat | `gemini-flash-latest` | `GEMINI_CHAT_MODEL` hoặc Cài đặt → AI |
+| Chat | `gemini-3.5-flash` (từ 2026-10-18; trước là alias `gemini-flash-latest`) | `GEMINI_CHAT_MODEL` hoặc Cài đặt → AI |
 | Artifact (Studio) | `gemini-pro-latest` | `GEMINI_ARTIFACT_MODEL` hoặc Cài đặt → AI |
 | Embedding | `gemini-embedding-001` (cắt 768 chiều) | `GEMINI_EMBEDDING_MODEL` (đổi model khác chiều cần migration, xem docs/08 §4) |
 | Ảnh | `gemini-2.5-flash-image` | `GEMINI_IMAGE_MODEL` |
