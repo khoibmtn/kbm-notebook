@@ -140,7 +140,7 @@ Các điểm dưới đây phản ánh code thật sau P0; phase sau dựa vào 
 
 **AI**
 - Thêm `AiProviderError` (key sai/hết quota… → 400/429/502, mã `ai_provider_error`) bên cạnh `AiNotConfiguredError` (412, mã `ai_not_configured`). `TextRequest.__mockJson` chỉ để test với `MockAiProvider`.
-- Model mặc định cấu hình qua env (`GEMINI_CHAT_MODEL`, `GEMINI_ARTIFACT_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_IMAGE_MODEL`) hoặc `user_settings`; mặc định `gemini-3.5-flash` (chat; đổi từ alias `gemini-flash-latest` ngày 2026-10-18 vì alias hay quá tải) / `gemini-pro-latest` / `gemini-embedding-001`. Embedding luôn chuẩn hoá L2 sau khi cắt `outputDimensionality` (768).
+- Model mặc định cấu hình qua env (`GEMINI_CHAT_MODEL`, `GEMINI_ARTIFACT_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_IMAGE_MODEL`) hoặc `user_settings`; mặc định `gemini-3.5-flash` cho cả chat và artifact (đổi ngày 2026-10-18: alias `gemini-flash-latest` hay quá tải, `gemini-pro-latest` limit 0 ở gói miễn phí) / `gemini-embedding-001`. Embedding luôn chuẩn hoá L2 sau khi cắt `outputDimensionality` (768).
 - `KnowledgeProvider`/`Evidence` đã có kiểu ở `src/server/knowledge/providers/types.ts` (chưa có implementation).
 
 **Tệp & job & realtime**

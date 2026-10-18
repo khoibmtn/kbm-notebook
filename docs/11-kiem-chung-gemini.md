@@ -32,7 +32,7 @@ Script gọi `models.list` và đối chiếu 4 model mặc định trong `src/s
 | Vai trò | Mặc định hiện tại | Cách ghi đè |
 |---|---|---|
 | Chat | `gemini-3.5-flash` (từ 2026-10-18; trước là alias `gemini-flash-latest`) | `GEMINI_CHAT_MODEL` hoặc Cài đặt → AI |
-| Artifact (Studio) | `gemini-pro-latest` | `GEMINI_ARTIFACT_MODEL` hoặc Cài đặt → AI |
+| Artifact (Studio) | `gemini-3.5-flash` (từ 2026-10-18; trước là `gemini-pro-latest`, limit 0 ở gói miễn phí) | `GEMINI_ARTIFACT_MODEL` hoặc Cài đặt → AI |
 | Embedding | `gemini-embedding-001` (cắt 768 chiều) | `GEMINI_EMBEDDING_MODEL` (đổi model khác chiều cần migration, xem docs/08 §4) |
 | Ảnh | `gemini-2.5-flash-image` | `GEMINI_IMAGE_MODEL` |
 
@@ -122,17 +122,17 @@ Ngưỡng 0,25 (`INSUFFICIENT_SIMILARITY_THRESHOLD` ở `src/lib/chat.ts`) đư�
 | Mục | Ngày | Kết quả | Ghi chú / quyết định |
 |---|---|---|---|
 | Model chat | 2026-10-18 | `gemini-3.5-flash` pass (8,4 s), `gemini-3-flash-preview` pass (7,4 s); `gemini-flash-latest`, `gemini-3.8-flash` 503 quá tải; `gemini-flash-lite-latest` fail (trích dẫn `[5.1]`) | Google: `gemini-2.5-flash` không còn cho người dùng mới. Đề xuất mặc định `gemini-3.5-flash` — chờ chủ dự án |
-| Model artifact | | | chưa thử |
-| Model embedding | 2026-10-18 | `gemini-embedding-001` 768 chiều chạy đúng qua ingest thật | giữ |
-| Model ảnh | | | chưa thử |
-| Embedding: direct / paraphrase / related / unrelated | 2026-10-18 | trên tài liệu thật (DOCX 25 chunk): câu hỏi liên quan đạt 0,83 / 0,78 | chưa đo câu không liên quan; chạy `pnpm verify:gemini --only embedding` khi Gemini hết quá tải |
+| Model artifact | 2026-10-18 | `gemini-pro-latest` → `gemini-3.1-pro`: **gói miễn phí limit 0** (quota 429 ngay, "retry in 22h"); `gemini-3.5-flash` chạy tốt cho quiz/slide/infographic | Đề xuất mặc định artifact `gemini-3.5-flash` khi dùng khoá miễn phí; pro chỉ khi có billing |
+| Model embedding | 2026-10-18 | `gemini-embedding-001` 768 chiều chạy đúng (script + ingest thật) | giữ |
+| Model ảnh | 2026-10-18 | `gemini-2.5-flash-image` (→ `gemini-2.5-flash-preview-image`) và `gemini-nano-banana-2.1`: **gói miễn phí limit 0** | Sinh ảnh cần billing; app bỏ qua ảnh êm (slide giữ `image.prompt`) |
+| Embedding: direct / paraphrase / related / unrelated | 2026-10-18 | Tài liệu mẫu (2 chunk): 0,750 / 0,747 / 0,622 / **0,506**. Tài liệu thật DOCX 25 chunk: câu liên quan 0,83 / 0,78 | **Ngưỡng 0,25 vô hiệu**: câu "phở bò" vẫn 0,506. Điểm giữa gợi ý ≈ 0,63; nhưng "related" (cùng ngành, nguồn không trả lời) = 0,622 nên ngưỡng ~0,6 cũng không tách được. Cần đo thêm ≥ 3 tài liệu rồi quyết; tạm dựa vào `not_found` của model (đã hoạt động đúng ở bước chat) |
 | Chat có trích dẫn (điểm 4.3) | 2026-10-18 | Đúng nguồn 5, trích dẫn 5, tiếng Việt 5, cấu trúc 5 (câu hỏi SGLT2 trên bản tổng quan; `[n]` mở đúng đoạn) | mẫu 1 câu; cần thêm 3–5 câu khác loại |
 | Streaming (token đầu) | 2026-10-18 | có stream, trả lời đủ trong ~12 s | chưa đo token đầu |
-| Quiz | | | chưa thử |
-| Slide deck + PPTX/PDF | | | chưa thử |
-| Infographic | | | chưa thử |
-| Ảnh AI | | | chưa thử |
-| Web grounding | | | chưa thử |
+| Quiz | 2026-10-18 | `gemini-3.5-flash`, 13,8 s: 5/5 câu mcq/tf hợp lệ, 5/5 có trích dẫn, đáp án đúng nguồn (nhịn ăn, Apfel) | pass |
+| Slide deck + PPTX/PDF | 2026-10-18 | `gemini-3.5-flash`, 30,6 s: đúng 8 slide, 6 layout (title, title_bullets, table ×2, two_column, chart, closing), 8/8 có trích dẫn và ghi chú, 3 slide số liệu | pass (script); PPTX/PDF qua giao diện chưa thử |
+| Infographic | 2026-10-18 | `gemini-3.5-flash`, 48,1 s: 7 khối (stat, list, chart, process, icon_text), 7/7 có trích dẫn, số liệu kiểm chứng có trong nguồn | pass |
+| Ảnh AI | 2026-10-18 | 429 quota limit 0 ở cả hai model ảnh (gói miễn phí) | cần billing |
+| Web grounding | 2026-10-18 | 429 quota với `gemini-3.5-flash` và `gemini-3-flash-preview` (Google Search grounding không có ở gói miễn phí của khoá này) | cần billing; tính năng "Web" sẽ báo lỗi provider, không có dữ liệu giả |
 | Ingest nguồn thật (MD, URL, PDF) | 2026-10-18 | text 67k ký tự từ NotebookLM → 25 chunk ready; tóm tắt AI thất bại vì 503 → dùng tóm tắt trích xuất (đúng thiết kế) | chưa thử PDF/URL |
 
 Sau khi điền: cập nhật `docs/00-spec-du-an.md` §6.1 (đánh dấu đã kiểm chứng), đổi mặc định model/ngưỡng nếu có, và mở việc chỉnh prompt thành các commit `feat(ai): …` riêng.
