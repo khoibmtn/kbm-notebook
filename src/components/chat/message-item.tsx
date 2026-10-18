@@ -17,6 +17,29 @@ export function UserBubble({ text }: { text: string }) {
   );
 }
 
+/** Dấu lỗi ngay dưới tin nhắn người dùng khi gửi câu hỏi thất bại: thông điệp lỗi nguyên văn + nút "Thử lại". */
+export function SendErrorNotice({ message, onRetry, busy }: { message: string; onRetry: () => void; busy?: boolean }) {
+  const t = useT();
+  return (
+    <div className="flex justify-end">
+      <div
+        role="alert"
+        className="flex max-w-[85%] items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+        data-testid="chat-send-error"
+      >
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <div className="min-w-0 space-y-1.5">
+          <p className="font-medium">{t("chat.error.sendFailed")}</p>
+          <p className="break-words text-xs text-destructive/90">{message}</p>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={onRetry} disabled={busy} data-testid="chat-retry">
+            <RefreshCw /> {t("chat.error.retry")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Khối "Nguồn đã dùng": các nguồn thực sự được trích dẫn, bấm để mở đúng đoạn. */
 export function SourcesUsedBlock({
   sourcesUsed,

@@ -75,6 +75,8 @@ export const chatEn = {
   "chat.error.load": "Could not load the conversation",
   "chat.error.create": "Could not create the conversation",
   "chat.error.ask": "Could not send the question",
+  "chat.error.sendFailed": "This question has no answer yet",
+  "chat.error.retry": "Retry",
 
   "notes.list": "Notes list",
   "notes.new": "New note",

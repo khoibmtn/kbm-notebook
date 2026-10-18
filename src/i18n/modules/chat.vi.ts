@@ -73,6 +73,8 @@ export const chatVi = {
   "chat.error.load": "Không tải được cuộc trò chuyện",
   "chat.error.create": "Không tạo được cuộc trò chuyện",
   "chat.error.ask": "Không gửi được câu hỏi",
+  "chat.error.sendFailed": "Câu hỏi này chưa có câu trả lời",
+  "chat.error.retry": "Thử lại",
 
   "notes.list": "Danh sách ghi chú",
   "notes.new": "Ghi chú mới",

@@ -30,6 +30,19 @@ function writeActive(nb: string, id: string | null) {
   }
 }
 
+/** Lỗi gửi câu hỏi, gắn với đúng tin nhắn người dùng (hiện dấu lỗi + "Thử lại" ngay dưới bong bóng đó). */
+export type SendError = {
+  /** Id tin nhắn người dùng hiển thị (id thật nếu server đã lưu, `temp-…` nếu chưa). */
+  userMessageId: string;
+  message: string;
+  question: string;
+  /** Phạm vi và model đã chốt lúc gửi: thử lại dùng đúng các giá trị này. */
+  scope: ChatScope;
+  model?: string;
+  /** Server đã lưu tin nhắn người dùng (đã nhận `meta`) → thử lại bằng `regenerate`, không tạo tin trùng. */
+  saved: boolean;
+};
+
 export type SendOptions = { scope: ChatScope; model?: string; regenerate?: boolean };
 
 /**
@@ -43,6 +56,7 @@ export function useChat(notebookId: string) {
   const [messages, setMessages] = useState<ChatMessageDto[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  const [sendError, setSendError] = useState<SendError | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeRef = useRef<string | null>(null);
   const initRef = useRef(false);
@@ -51,6 +65,7 @@ export function useChat(notebookId: string) {
     (id: string | null) => {
       activeRef.current = id;
       setActiveIdState(id);
+      setSendError(null); // dấu lỗi chỉ thuộc về hội thoại đang mở
       writeActive(notebookId, id);
     },
     [notebookId],
@@ -160,6 +175,7 @@ export function useChat(notebookId: string) {
       if (streaming) return false;
       const text = question.trim();
       if (!text && !opts.regenerate) return false;
+      setSendError(null); // gửi câu hỏi khác / thử lại: ẩn dấu lỗi cũ ngay
       let conversationId = activeRef.current;
       try {
         if (!conversationId) conversationId = (await create()).id;
@@ -173,12 +189,16 @@ export function useChat(notebookId: string) {
 
       // Hiển thị ngay: câu hỏi người dùng (trừ khi tạo lại) + trạng thái đang tìm nguồn.
       let lastUserText = text;
+      let regenerateTargetId: string | null = null;
+      let temp: ChatMessageDto | null = null;
       if (opts.regenerate) {
-        lastUserText = [...messages].reverse().find((m) => m.role === "user")?.content ?? text;
+        const lastUser = [...messages].reverse().find((m) => m.role === "user");
+        lastUserText = lastUser?.content ?? text;
+        regenerateTargetId = lastUser?.id ?? null;
         // bỏ câu trả lời cuối khỏi màn hình trong lúc tạo lại
         setMessages((cur) => (cur.length && cur[cur.length - 1].role === "assistant" ? cur.slice(0, -1) : cur));
       } else {
-        const temp: ChatMessageDto = {
+        temp = {
           id: `temp-${Date.now()}`,
           conversationId: convId,
           role: "user",
@@ -192,14 +212,19 @@ export function useChat(notebookId: string) {
           usage: null,
           createdAt: new Date().toISOString(),
         };
-        setMessages((cur) => [...cur, temp]);
+        const tempMessage = temp;
+        // Bản tạm còn sót từ lần lỗi trước (server chưa lưu) bị thay bằng câu hỏi mới này.
+        setMessages((cur) => [...cur.filter((m) => !m.id.startsWith("temp-")), tempMessage]);
       }
       setStreaming({ answer: "", evidence: null, phase: "searching" });
 
-      const body: AskBody = { question: text || lastUserText, scope: opts.scope, model: opts.model, regenerate: opts.regenerate };
+      const askText = text || lastUserText;
+      const body: AskBody = { question: askText, scope: opts.scope, model: opts.model, regenerate: opts.regenerate };
       let accepted = false;
       let answer = "";
       let finished = false;
+      let userMessageId: string | null = null;
+      let failure: string | null = null;
       try {
         const events = await askStream(notebookId, convId, body, ac.signal);
         accepted = true;
@@ -210,6 +235,7 @@ export function useChat(notebookId: string) {
               else toast.message(t(ev.reason === "web_not_allowed" ? "chat.scope.webNotAllowed" : "chat.scope.connectionsUnavailable"));
               break;
             case "meta":
+              userMessageId = ev.userMessageId;
               setStreaming((s) => (s ? { ...s, evidence: ev.evidence, phase: "answering" } : s));
               break;
             case "delta":
@@ -220,32 +246,65 @@ export function useChat(notebookId: string) {
               finished = true;
               break;
             case "error":
-              toast.error(ev.message || t("chat.error.ask"));
+              failure = ev.message || t("chat.error.ask");
               break;
           }
         }
       } catch (e) {
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
-          toast.error(errorMessage(e, t("chat.error.ask")));
-        }
+        if (!(e instanceof DOMException && e.name === "AbortError")) failure = errorMessage(e, t("chat.error.ask"));
       } finally {
         abortRef.current = null;
         setStreaming(null);
       }
+
       // Đồng bộ với server (id thật, câu trả lời đã hậu kiểm, tin nhắn người dùng).
+      let loaded: ChatMessageDto[] | null = null;
       if (accepted || finished) {
-        await loadMessages(convId);
+        loaded = await loadMessages(convId);
         void reloadConversations();
       } else if (!opts.regenerate) {
-        // Server từ chối trước khi lưu (412/429/…): gỡ câu hỏi tạm.
-        setMessages((cur) => cur.filter((m) => !m.id.startsWith("temp-")));
+        // Có lỗi: giữ câu hỏi tạm để gắn dấu lỗi + "Thử lại" ngay dưới nó. Bị người dùng dừng: gỡ câu hỏi tạm.
+        if (!failure) setMessages((cur) => cur.filter((m) => !m.id.startsWith("temp-")));
       } else {
-        await loadMessages(convId);
+        loaded = await loadMessages(convId);
+      }
+
+      if (failure) {
+        // Server đã lưu tin nhắn người dùng? (đã nhận `meta`; hoặc mất kết nối trước `meta` nhưng hội thoại đã kết thúc bằng đúng câu hỏi này)
+        let savedId = userMessageId;
+        if (!savedId && regenerateTargetId) savedId = regenerateTargetId;
+        const last = loaded?.[loaded.length - 1];
+        if (!savedId && accepted && last?.role === "user" && last.content === text) savedId = last.id;
+        let anchorId: string | null = null;
+        if (savedId) {
+          // Id thật có trong danh sách vừa tải; nếu không tải được thì bản tạm vẫn đang hiển thị.
+          anchorId = loaded?.some((m) => m.id === savedId) ? savedId : (temp?.id ?? savedId);
+        } else if (temp) {
+          anchorId = temp.id;
+          const tempMessage = temp;
+          // Đã nhận phản hồi nhưng server không lưu câu hỏi: bản tải lại không có câu hỏi → đặt lại bản tạm.
+          if (accepted) setMessages((cur) => (cur.some((m) => m.id === tempMessage.id) ? cur : [...cur, tempMessage]));
+        }
+        if (anchorId) {
+          setSendError({ userMessageId: anchorId, message: failure, question: askText, scope: opts.scope, model: opts.model, saved: savedId !== null });
+        } else {
+          toast.error(failure); // không có tin nhắn nào để gắn dấu lỗi
+        }
       }
       return accepted;
     },
     [create, loadMessages, messages, notebookId, reloadConversations, streaming, t],
   );
+
+  /** Gửi lại đúng câu hỏi đã lỗi với phạm vi/model đã chốt lúc gửi, không tạo tin nhắn người dùng trùng. */
+  const retry = useCallback(async (): Promise<boolean> => {
+    const err = sendError;
+    if (!err || streaming) return false;
+    if (err.saved) return send("", { scope: err.scope, model: err.model, regenerate: true });
+    // Server chưa lưu: bỏ bản tạm cũ rồi gửi như câu hỏi mới (send thêm đúng một bản tạm).
+    setMessages((cur) => cur.filter((m) => m.id !== err.userMessageId));
+    return send(err.question, { scope: err.scope, model: err.model });
+  }, [send, sendError, streaming]);
 
   const active = useMemo(() => conversations?.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
 
@@ -263,5 +322,7 @@ export function useChat(notebookId: string) {
     remove,
     send,
     stop,
+    sendError,
+    retry,
   };
 }

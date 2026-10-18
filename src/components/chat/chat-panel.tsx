@@ -1,6 +1,6 @@
 "use client";
 import { MessageSquare, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useNotebook } from "@/components/notebook/notebook-context";
 import { useConnections, writableBridgeConnections } from "@/components/connectors/use-connections";
@@ -20,7 +20,7 @@ import { isSelectionInitialized, useSourceSelection } from "@/lib/use-source-sel
 import type { NoteDto } from "@/lib/notes";
 import { Composer } from "./composer";
 import { ConversationMenu } from "./conversation-menu";
-import { AssistantMessage, UserBubble, type MessageActions } from "./message-item";
+import { AssistantMessage, SendErrorNotice, UserBubble, type MessageActions } from "./message-item";
 import { useChat } from "./use-chat";
 import { useChatSources } from "./use-chat-sources";
 
@@ -282,7 +282,12 @@ export function ChatPanel() {
 
           {messages.map((m) =>
             m.role === "user" ? (
-              <UserBubble key={m.id} text={m.content} />
+              <Fragment key={m.id}>
+                <UserBubble text={m.content} />
+                {chat.sendError?.userMessageId === m.id && !chat.isStreaming && (
+                  <SendErrorNotice message={chat.sendError.message} onRetry={() => void chat.retry()} busy={chat.isStreaming} />
+                )}
+              </Fragment>
             ) : m.role === "assistant" ? (
               <AssistantMessage
                 key={m.id}
