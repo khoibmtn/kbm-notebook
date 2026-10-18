@@ -60,6 +60,26 @@ export function findCitations(text: string): CitationToken[] {
   return tokens;
 }
 
+/** Dấu `[d.d]` / `[d.d.d]` (số mục/phần của tài liệu, vd `[5.1]`): không phải trích dẫn hợp lệ; không đứng trước `(`. */
+const DECIMAL_TOKEN_SOURCE = String.raw`\[\s*\d{1,4}(?:\s*\.\s*\d{1,4}){1,2}\s*\](?!\()`;
+
+/** Xoá token thập phân `[5.1]` (ngoài code) cùng khoảng trắng đứng trước. Không bao giờ được coi là `[n]` hợp lệ. */
+function removeDecimalTokens(text: string): string {
+  if (!text.includes("[")) return text;
+  const code = codeRanges(text);
+  const re = new RegExp(DECIMAL_TOKEN_SOURCE, "g");
+  let out = "";
+  let cursor = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const start = m.index;
+    if (code.some(([s, e]) => start >= s && start < e)) continue;
+    out += text.slice(cursor, start).replace(/[ \t]+$/, "");
+    cursor = start + m[0].length;
+  }
+  return out + text.slice(cursor);
+}
+
 export type SanitizedCitations = {
   /** Văn bản đã bỏ trích dẫn không hợp lệ. */
   text: string;
@@ -69,8 +89,9 @@ export type SanitizedCitations = {
   removed: number[];
 };
 
-/** Giữ `[n]` có 1 ≤ n ≤ maxN, bỏ phần còn lại; dấu `[...]` rỗng sau khi lọc bị xoá cùng khoảng trắng đứng trước nó. */
-export function sanitizeCitations(text: string, maxN: number): SanitizedCitations {
+/** Giữ `[n]` có 1 ≤ n ≤ maxN, bỏ phần còn lại (kể cả `[5.1]`); dấu `[...]` rỗng sau khi lọc bị xoá cùng khoảng trắng đứng trước nó. */
+export function sanitizeCitations(input: string, maxN: number): SanitizedCitations {
+  const text = removeDecimalTokens(input);
   const used = new Set<number>();
   const removed = new Set<number>();
   let out = "";
@@ -95,7 +116,8 @@ export function sanitizeCitations(text: string, maxN: number): SanitizedCitation
 }
 
 /** Xoá mọi `[n]` (dùng để gửi lịch sử hội thoại cho model mà không lẫn đánh số của lượt trước). */
-export function stripCitations(text: string): string {
+export function stripCitations(input: string): string {
+  const text = removeDecimalTokens(input);
   let out = "";
   let cursor = 0;
   for (const tok of findCitations(text)) {

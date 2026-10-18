@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { getAiProviderForUser } from "@/server/ai";
 import { hashEmbed, MockAiProvider, minimalValueFor } from "@/server/ai/mock";
+import { unwrapSdkErrorMessage } from "@/server/ai/gemini";
 import { AiNotConfiguredError } from "@/server/ai/provider";
 import { ARTIFACT_TYPES, DEFAULT_PROMPTS, renderUserPrompt, resolvePrompt } from "@/server/ai/prompts/defaults";
 import { resetEnvCache } from "@/server/env";
@@ -8,6 +9,25 @@ import { createTestUser } from "../helpers/users";
 import { updateAiSettings } from "@/server/settings/service";
 
 const cosine = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
+
+describe("unwrapSdkErrorMessage (lỗi Gemini SDK)", () => {
+  const google = { error: { code: 429, message: "You exceeded your current quota, please check your plan.", status: "RESOURCE_EXHAUSTED" } };
+
+  it("JSON một lớp (generateContent) → câu thông báo", () => {
+    expect(unwrapSdkErrorMessage(JSON.stringify(google))).toBe(google.error.message);
+  });
+
+  it("JSON lồng hai lớp (generateContentStream: error.message lại là JSON in đẹp) → câu thông báo trong cùng", () => {
+    const nested = JSON.stringify({ error: { message: JSON.stringify(google, null, 2), status: "Too Many Requests" } });
+    expect(unwrapSdkErrorMessage(nested)).toBe(google.error.message);
+  });
+
+  it("văn bản thường, JSON hỏng hoặc thiếu error.message → giữ nguyên (đã trim)", () => {
+    expect(unwrapSdkErrorMessage("  fetch failed ")).toBe("fetch failed");
+    expect(unwrapSdkErrorMessage("{not json")).toBe("{not json");
+    expect(unwrapSdkErrorMessage(JSON.stringify({ error: { code: 500 } }))).toBe(JSON.stringify({ error: { code: 500 } }));
+  });
+});
 
 describe("MockAiProvider", () => {
   const mock = new MockAiProvider();

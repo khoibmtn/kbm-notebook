@@ -79,6 +79,37 @@ describe("sanitizeCitations", () => {
   });
 });
 
+describe("token thập phân [d.d]", () => {
+  it("sanitizeCitations xoá [5.1] như token không hợp lệ và không đưa vào used", () => {
+    const r = sanitizeCitations("Ý [5.1]. Ý hai [2].", 6);
+    expect(r.text).toBe("Ý. Ý hai [2].");
+    expect(r.used).toEqual([2]);
+    expect(r.removed).toEqual([]);
+  });
+  it("cho phép khoảng trắng bên trong và dạng d.d.d", () => {
+    expect(sanitizeCitations("A [ 2 . 3 ] B [1.2.3] C [1]", 6).text).toBe("A B C [1]");
+  });
+  it("không đụng liên kết markdown, inline code, code fence", () => {
+    const text = "Xem [5.1](http://x.test) và `[5.1]` rồi\n```\n[2.3]\n```";
+    const r = sanitizeCitations(text, 6);
+    expect(r.text).toBe(text);
+    expect(stripCitations(text)).toBe(text);
+  });
+  it("findCitations không nhận [5.1] (renderer chip không đổi)", () => {
+    expect(findCitations("Ý [5.1]")).toEqual([]);
+  });
+  it("stripCitations xoá cả [5.1]", () => {
+    expect(stripCitations("Trả lời [5.1] có ý [2].")).toBe("Trả lời có ý.");
+  });
+  it("postCheckAnswer: chỉ có [5.1] → no_citations, sourcesUsed rỗng, nội dung không còn [5.1]", () => {
+    const r = postCheckAnswer("Nội dung [5.1].", [ev(1)]);
+    expect(r.content).not.toContain("[5.1]");
+    expect(r.insufficientReason).toBe("no_citations");
+    expect(r.sourcesUsed).toEqual([]);
+    expect(r.usedNumbers).toEqual([]);
+  });
+});
+
 describe("stripCitations", () => {
   it("xoá mọi [n] cho lịch sử hội thoại", () => {
     expect(stripCitations("Trả lời [1] có ý [2, 3]. Hết [4-5]")).toBe("Trả lời có ý. Hết");

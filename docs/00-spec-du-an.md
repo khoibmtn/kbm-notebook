@@ -157,7 +157,7 @@ Môi trường phát triển trước đây không có khoá AI và không có t
 
 ### 6.3 Backlog sản phẩm
 
-- Phát hiện khi kiểm chứng 2026-10-18: (a) nguồn nhập từ NotebookLM (và có thể nguồn tạo ngoài hộp "Thêm nguồn") không được tự chọn vào phạm vi Chat, người dùng phải bấm "Chọn tất cả"; (b) khi Gemini lỗi trước khi có delta (503 quá tải), tin nhắn người dùng ở lại không có câu trả lời và chỉ có toast tạm — nên có dấu lỗi + nút "Thử lại" ngay dưới tin nhắn; (c) `gemini-flash-lite-latest` ghi trích dẫn kiểu `[5.1]` (số mục) → prompt chat nên cấm rõ dạng này hoặc hậu kiểm ánh xạ.
+- ~~Phát hiện khi kiểm chứng 2026-10-18~~ **đã sửa 2026-10-18:** (a) nguồn nhập từ NotebookLM tự vào phạm vi Chat (Drive đã đúng từ trước, có test hồi quy); (b) stream lỗi → khối lỗi `role="alert"` dưới tin nhắn người dùng kèm nút "Thử lại" (dùng `regenerate` nếu server đã lưu tin), thông điệp lỗi Gemini được bóc khỏi JSON lồng hai lớp của SDK streaming; (c) prompt chat cấm `[5.1]`/số mục, hậu kiểm xoá token `[d.d]` mà không công nhận. Còn để ngỏ: `[0.05]` (p-value trong ngoặc vuông) cũng bị xoá; dạng `[5.1, 2]`/`[1-2.5]` chỉ không được công nhận chứ chưa bị xoá.
 - Mind map: nhãn dài ngắt dòng sai quanh nút (đo chữ trước khi font tải xong).
 - Tìm kiếm toàn cục phân biệt dấu tiếng Việt; cần `unaccent`.
 - Explore phân trang theo offset; nên chuyển keyset.

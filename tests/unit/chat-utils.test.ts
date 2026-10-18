@@ -51,6 +51,9 @@ describe("prompt chat", () => {
     expect(defaultChatSystemPrompt).toContain("CHỈ dùng các số [n]");
     expect(defaultChatSystemPrompt).toContain("Không tìm thấy thông tin này trong các nguồn đã chọn");
     expect(defaultChatSystemPrompt).toContain("ngôn ngữ của câu hỏi");
+    expect(defaultChatSystemPrompt).toContain("số thứ tự nguyên");
+    expect(defaultChatSystemPrompt).toContain("[5.1]");
+    expect(defaultChatSystemPrompt).toContain("[2.3]");
   });
   it("ghi đè của người dùng + system_instruction của sổ tay", () => {
     expect(resolveChatPrompt(null).system).toBe(defaultChatSystemPrompt);

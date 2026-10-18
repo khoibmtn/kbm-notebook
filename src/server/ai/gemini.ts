@@ -55,17 +55,33 @@ function dedupeSources(list: WebSource[]): WebSource[] {
   return list.filter((s) => (seen.has(s.url) ? false : (seen.add(s.url), true)));
 }
 
+/**
+ * Lỗi SDK thường là JSON dạng `{"error":{"message":...}}`. Với streaming, SDK lồng thêm một lớp:
+ * `error.message` lại là một JSON (in đẹp) của Google. Bóc dần tối đa vài lớp để lấy câu thông báo thật
+ * (vd. "You exceeded your current quota…") thay vì cả khối JSON thô.
+ */
+export function unwrapSdkErrorMessage(message: string, maxDepth = 4): string {
+  let current = message;
+  for (let i = 0; i < maxDepth; i++) {
+    const trimmed = current.trim();
+    if (!trimmed.startsWith("{")) break;
+    let inner: unknown;
+    try {
+      const parsed = JSON.parse(trimmed) as { error?: { message?: unknown } };
+      inner = parsed?.error?.message;
+    } catch {
+      break;
+    }
+    if (typeof inner !== "string" || !inner.trim()) break;
+    current = inner;
+  }
+  return current.trim();
+}
+
 function wrapError(err: unknown): AiProviderError {
   if (err instanceof AiProviderError) return err;
   const e = err as { status?: number; message?: string };
-  let message = e?.message ?? "Lỗi không xác định từ Gemini";
-  // Lỗi SDK thường là JSON dạng {"error":{"message":...}}
-  try {
-    const parsed = JSON.parse(message) as { error?: { message?: string } };
-    if (parsed?.error?.message) message = parsed.error.message;
-  } catch {
-    /* giữ nguyên */
-  }
+  const message = unwrapSdkErrorMessage(e?.message ?? "Lỗi không xác định từ Gemini");
   return new AiProviderError(message, typeof e?.status === "number" ? e.status : null);
 }
 
