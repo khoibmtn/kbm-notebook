@@ -155,6 +155,10 @@ Môi trường phát triển trước đây không có khoá AI và không có t
 | Cloudflare Containers (dùng gói Workers Paid $5 sẵn có) + Supabase qua Hyperdrive + R2 + Cron Triggers | Mới phân tích, chưa làm | Cần thêm `StorageAdapter` cho R2 và một Worker đứng trước container; xem phân tích trong lịch sử dự án |
 | Tự host bằng docker-compose | Có sẵn tệp | Chưa build thử |
 
+### 6.2b Hạng mục nghiên cứu P7 (đề xuất 2026-10-18)
+
+Google Drive làm nơi lưu trữ theo email đăng nhập; nguồn tự thêm mặc định **local**, bật **online** mới đẩy lên Drive để dùng trên mọi thiết bị; chia sẻ sổ tay hỏi có đưa nguồn local lên online. Chi tiết workflow, hiện trạng, 7 câu hỏi mở (quan trọng nhất: định nghĩa "local" trong kiến trúc web app có server trung tâm) và phác thảo kỹ thuật ở `docs/04-roadmap.md` mục "Hạng mục nghiên cứu P7". Chưa có code.
+
 ### 6.3 Backlog sản phẩm
 
 - ~~Phát hiện khi kiểm chứng 2026-10-18~~ **đã sửa 2026-10-18:** (a) nguồn nhập từ NotebookLM tự vào phạm vi Chat (Drive đã đúng từ trước, có test hồi quy); (b) stream lỗi → khối lỗi `role="alert"` dưới tin nhắn người dùng kèm nút "Thử lại" (dùng `regenerate` nếu server đã lưu tin), thông điệp lỗi Gemini được bóc khỏi JSON lồng hai lớp của SDK streaming; (c) prompt chat cấm `[5.1]`/số mục, hậu kiểm xoá token `[d.d]` mà không công nhận. Còn để ngỏ: `[0.05]` (p-value trong ngoặc vuông) cũng bị xoá; dạng `[5.1, 2]`/`[1-2.5]` chỉ không được công nhận chứ chưa bị xoá.
