@@ -121,18 +121,18 @@ Ngưỡng 0,25 (`INSUFFICIENT_SIMILARITY_THRESHOLD` ở `src/lib/chat.ts`) đư�
 
 | Mục | Ngày | Kết quả | Ghi chú / quyết định |
 |---|---|---|---|
-| Model chat | | | |
-| Model artifact | | | |
-| Model embedding | | | |
-| Model ảnh | | | |
-| Embedding: direct / paraphrase / related / unrelated | | | ngưỡng chốt: |
-| Chat có trích dẫn (điểm 4.3) | | | |
-| Streaming (token đầu) | | | |
-| Quiz | | | |
-| Slide deck + PPTX/PDF | | | |
-| Infographic | | | |
-| Ảnh AI | | | |
-| Web grounding | | | |
-| Ingest nguồn thật (MD, URL, PDF) | | | |
+| Model chat | 2026-10-18 | `gemini-3.5-flash` pass (8,4 s), `gemini-3-flash-preview` pass (7,4 s); `gemini-flash-latest`, `gemini-3.8-flash` 503 quá tải; `gemini-flash-lite-latest` fail (trích dẫn `[5.1]`) | Google: `gemini-2.5-flash` không còn cho người dùng mới. Đề xuất mặc định `gemini-3.5-flash` — chờ chủ dự án |
+| Model artifact | | | chưa thử |
+| Model embedding | 2026-10-18 | `gemini-embedding-001` 768 chiều chạy đúng qua ingest thật | giữ |
+| Model ảnh | | | chưa thử |
+| Embedding: direct / paraphrase / related / unrelated | 2026-10-18 | trên tài liệu thật (DOCX 25 chunk): câu hỏi liên quan đạt 0,83 / 0,78 | chưa đo câu không liên quan; chạy `pnpm verify:gemini --only embedding` khi Gemini hết quá tải |
+| Chat có trích dẫn (điểm 4.3) | 2026-10-18 | Đúng nguồn 5, trích dẫn 5, tiếng Việt 5, cấu trúc 5 (câu hỏi SGLT2 trên bản tổng quan; `[n]` mở đúng đoạn) | mẫu 1 câu; cần thêm 3–5 câu khác loại |
+| Streaming (token đầu) | 2026-10-18 | có stream, trả lời đủ trong ~12 s | chưa đo token đầu |
+| Quiz | | | chưa thử |
+| Slide deck + PPTX/PDF | | | chưa thử |
+| Infographic | | | chưa thử |
+| Ảnh AI | | | chưa thử |
+| Web grounding | | | chưa thử |
+| Ingest nguồn thật (MD, URL, PDF) | 2026-10-18 | text 67k ký tự từ NotebookLM → 25 chunk ready; tóm tắt AI thất bại vì 503 → dùng tóm tắt trích xuất (đúng thiết kế) | chưa thử PDF/URL |
 
 Sau khi điền: cập nhật `docs/00-spec-du-an.md` §6.1 (đánh dấu đã kiểm chứng), đổi mặc định model/ngưỡng nếu có, và mở việc chỉnh prompt thành các commit `feat(ai): …` riêng.
