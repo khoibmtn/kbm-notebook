@@ -157,7 +157,7 @@ Môi trường phát triển trước đây không có khoá AI và không có t
 
 ### 6.2b Hạng mục nghiên cứu P7 (đề xuất 2026-10-18)
 
-Google Drive làm nơi lưu trữ theo email đăng nhập; nguồn tự thêm mặc định **local**, bật **online** mới đẩy lên Drive để dùng trên mọi thiết bị; chia sẻ sổ tay hỏi có đưa nguồn local lên online. Chi tiết workflow, hiện trạng, 7 câu hỏi mở (quan trọng nhất: định nghĩa "local" trong kiến trúc web app có server trung tâm) và phác thảo kỹ thuật ở `docs/04-roadmap.md` mục "Hạng mục nghiên cứu P7". Chưa có code.
+Google Drive làm nơi lưu trữ theo email đăng nhập; nguồn tự thêm mặc định **local**, bật **online** mới đẩy lên Drive để dùng trên mọi thiết bị; chia sẻ sổ tay hỏi có đưa nguồn local lên online. Chi tiết workflow, hiện trạng, 7 câu hỏi mở (quan trọng nhất: định nghĩa "local" trong kiến trúc web app có server trung tâm) và phác thảo kỹ thuật ở `docs/04-roadmap.md` mục "Hạng mục nghiên cứu P7". **Tài liệu thiết kế `docs/12-luu-tru-google-drive.md` đã soạn** với bảng quyết định (mục 0, chờ chủ dự án chọn), đề xuất mô hình "một Postgres trung tâm + nhiều instance", scope `drive.file`, kế hoạch 3 đợt. Chưa có code.
 
 ### 6.3 Backlog sản phẩm
 

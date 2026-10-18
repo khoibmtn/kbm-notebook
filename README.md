@@ -150,3 +150,4 @@ Chi tiết kiến trúc, hợp đồng (`AiProvider`, `StorageAdapter`, jobs, re
 | [docs/08-trien-khai.md](docs/08-trien-khai.md) | Triển khai production: Docker, biến môi trường, nginx, sao lưu, OAuth Google, Gemini |
 | [docs/09-kiem-thu.md](docs/09-kiem-thu.md) | Chạy unit/API/e2e, DB test, mock provider, danh mục QA thủ công |
 | [docs/11-kiem-chung-gemini.md](docs/11-kiem-chung-gemini.md) | Kịch bản kiểm chứng Gemini thật: script, checklist giao diện, hiệu chỉnh ngưỡng thiếu bằng chứng |
+| [docs/12-luu-tru-google-drive.md](docs/12-luu-tru-google-drive.md) | Nghiên cứu P7 (chưa triển khai): Google Drive làm nơi lưu trữ, nguồn local/online — quyết định, thiết kế, kế hoạch |

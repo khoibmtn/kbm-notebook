@@ -57,7 +57,7 @@ Yêu cầu của chủ dự án (2026-10-18), ghi lại để nghiên cứu trư
 
 ### Đầu ra của bước nghiên cứu
 
-Một tài liệu `docs/12-luu-tru-google-drive.md` trả lời 7 câu hỏi mở, kèm sơ đồ dữ liệu và luồng; một prototype `GoogleDriveStorage` chạy được với tài khoản thật (put/get/delete + test); ước lượng khối lượng; sau đó mới đưa vào phase triển khai.
+Một tài liệu `docs/12-luu-tru-google-drive.md` trả lời 7 câu hỏi mở, kèm sơ đồ dữ liệu và luồng; một prototype `GoogleDriveStorage` chạy được với tài khoản thật (put/get/delete + test); ước lượng khối lượng; sau đó mới đưa vào phase triển khai. **Trạng thái 2026-10-18:** `docs/12` đã soạn (bảng quyết định mục 0 chờ chủ dự án tích chọn; kế hoạch 3 đợt ở mục 7); prototype chưa làm.
 
 ## Quy ước mã nguồn (bắt buộc cho mọi agent)
 - TypeScript strict; không `any` trừ khi bắt buộc kèm comment.

@@ -72,3 +72,4 @@ cd bridge/notebooklm && .venv/bin/pytest -q   # sidecar
 | `docs/09-kiem-thu.md` | Cách chạy test, checklist QA |
 | `docs/10-ra-soat-bao-mat.md` | 39 phát hiện bảo mật và trạng thái xử lý |
 | `docs/11-kiem-chung-gemini.md` | Kịch bản kiểm chứng Gemini thật (`pnpm verify:gemini`, checklist UI, hiệu chỉnh ngưỡng) |
+| `docs/12-luu-tru-google-drive.md` | Nghiên cứu P7: Google Drive làm nơi lưu trữ, nguồn local/online — bảng quyết định, thiết kế, kế hoạch 3 đợt (chưa có code) |
